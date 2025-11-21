@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draw-down Ticket Picker</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Load Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, getDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Expose Firebase objects globally for use in the main script block
+        window.firebase = {
+            initializeApp,
+            getAuth,
+            signInAnonymously,
+            signInWithCustomToken,
+            onAuthStateChanged,
+            getFirestore,
+            doc,
+            setDoc,
+            onSnapshot,
+            collection,
+            getDoc,
+            setLogLevel
+        };
+    </script>
+
+    <!-- Configure Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styles for the number grid */
+        .number-grid {
+            /* Responsive grid: default 10 columns, larger screens get more */
+            display: grid;
+            grid-template-columns: repeat(10, minmax(0, 1fr));
+            gap: 4px;
+        }
+
+        @media (min-width: 640px) {
+            .number-grid {
+                grid-template-columns: repeat(15, minmax(0, 1fr));
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .number-grid {
+                grid-template-columns: repeat(25, minmax(0, 1fr));
+            }
+        }
+
+        .number-item {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 4px;
+            font-size: 0.75rem; /* text-xs */
+            font-weight: 500; /* font-medium */
+            cursor: default;
+            user-select: none;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        /* Style for numbers picked once (only applicable to special numbers) */
+        .number-item.selected-once {
+            background-color: #fcd34d; /* Amber 300 */
+            color: #b45309; /* Amber 800 */
+            opacity: 0.7;
+            /* Use a dashed ring to show it's 'on deck' but not fully out */
+            box-shadow: 0 0 0 2px #b45309 inset;
+            transform: scale(1.05);
+            font-weight: 700; /* font-bold */
+        }
+
+        /* Style for numbers fully selected (1 pick for normal, 2 picks for special) */
+        .number-item.selected {
+            text-decoration: line-through;
+            opacity: 0.4;
+            background-color: #fca5a5; /* Red 300 */
+            color: #b91c1c; /* Red 700 */
+            transform: scale(0.95);
+            font-weight: 500;
+        }
+        
+        /* --- Animation for new pick --- */
+        @keyframes pick-flash {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(109, 40, 217, 0.6); } /* Indigo 700 */
+            50% { transform: scale(1.05); box-shadow: 0 0 10px 4px rgba(109, 40, 217, 0.8); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(109, 40, 217, 0); }
+        }
+
+        .pick-animation {
+            animation: pick-flash 0.4s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 md:p-8 font-sans">
+
+    <!-- Main Application Container -->
+    <div class="max-w-6xl mx-auto bg-white shadow-xl rounded-2xl overflow-hidden">
+        
+        <!-- Header and Controls -->
+        <header class="p-6 bg-indigo-600 text-white flex flex-col md:flex-row justify-between items-start md:items-center">
+            <h1 class="text-3xl font-extrabold mb-4 md:mb-0">
+                Draw-down Ticket Picker
+            </h1>
+            <div class="flex items-center space-x-4">
+                <div class="text-right">
+                    <p class="text-sm opacity-80">Last Selected:</p>
+                    <p id="selected-display" class="text-4xl font-black text-yellow-300 transition-all duration-300">
+                        --
+                    </p>
+                </div>
+                <button id="select-button" 
+                        class="px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl shadow-lg transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Pick Next Number
+                </button>
+            </div>
+        </header>
+
+        <!-- Status and Reset -->
+        <div class="p-6 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0">
+            <p class="text-sm text-gray-600">Total Available (Remaining): <span id="available-count" class="font-bold text-indigo-600">500</span></p>
+            <p id="special-info" class="text-xs text-orange-500 font-medium transition duration-150">
+                <!-- This text will be updated by JS based on the USER_DOUBLE_PICK_NUMBERS list -->
+                (Loading special number list...)
+            </p>
+            <p id="user-display" class="text-xs text-gray-500">
+                User ID: N/A
+            </p>
+            <button id="reset-button" class="text-sm text-red-500 hover:text-red-700 font-medium transition duration-150" onclick="handleReset()">
+                Reset Game State
+            </button>
+        </div>
+        
+        <!-- Number Grid Container -->
+        <main class="p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Numbers Table</h2>
+            <div id="number-table" class="number-grid bg-gray-100 p-2 rounded-lg border border-gray-200">
+                <!-- Numbers will be injected here by JavaScript -->
+            </div>
+        </main>
+        
+        <!-- Message Box for Game Over -->
+        <div id="message-box" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+            <div class="bg-white p-8 rounded-xl shadow-2xl max-w-sm text-center">
+                <svg class="w-12 h-12 text-green-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">All Numbers Picked!</h3>
+                <p class="text-gray-600 mb-6">You've successfully crossed out all 500 tickets.</p>
+                <button onclick="document.getElementById('message-box').classList.add('hidden'); handleReset();" class="px-4 py-2 bg-indigo-500 text-white font-medium rounded-lg hover:bg-indigo-600">Start Over</button>
+            </div>
+        </div>
+        
+        <!-- Custom Modal for Confirmation -->
+        <div id="confirmation-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+            <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm text-center">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Confirm Reset</h3>
+                <p class="text-gray-600 mb-6">Are you sure you want to reset the game? This will clear the picks for all users.</p>
+                <div class="flex justify-center space-x-4">
+                    <button id="confirm-reset-btn" class="px-4 py-2 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600">Yes, Reset</button>
+                    <button onclick="document.getElementById('confirmation-modal').classList.add('hidden');" class="px-4 py-2 bg-gray-300 text-gray-800 font-medium rounded-lg hover:bg-gray-400">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Use the global window object to wait for Firebase SDKs to load
+        window.onload = async function() {
+            if (typeof window.firebase === 'undefined') {
+                console.error("Firebase SDK not loaded. Check the <script type='module'> block.");
+                return;
+            }
+            
+            // Log for debugging
+            window.firebase.setLogLevel('debug');
+
+            // Global Firebase variables
+            let db;
+            let auth;
+            let userId = 'N/A';
+            let isAuthReady = false;
+
+            // Global game state variables (managed by Firestore)
+            let pickCounts = new Map();
+            let fullySelectedNumbers = new Set();
+            let lastSelectedNumber = null;
+            
+            const MAX_NUMBER = 500;
+            const GAME_ID = 'game_01'; 
+            
+            // <<< USER-DEFINED DOUBLE PICK NUMBERS >>>
+            // The list of numbers that require 2 picks to be fully out.
+            const USER_DOUBLE_PICK_NUMBERS = [10, 20, 30, 40, 50, 100, 200, 300, 400, 500];
+            const DOUBLE_PICK_SET = new Set(USER_DOUBLE_PICK_NUMBERS.filter(n => n >= 1 && n <= MAX_NUMBER));
+
+            const elements = {
+                table: document.getElementById('number-table'),
+                display: document.getElementById('selected-display'),
+                button: document.getElementById('select-button'),
+                count: document.getElementById('available-count'),
+                messageBox: document.getElementById('message-box'),
+                specialInfo: document.getElementById('special-info'),
+                userDisplay: document.getElementById('user-display'),
+                confirmModal: document.getElementById('confirmation-modal'),
+                confirmResetBtn: document.getElementById('confirm-reset-btn')
+            };
+
+            // --- Firebase Initialization and Authentication ---
+
+            try {
+                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+                if (!firebaseConfig || !Object.keys(firebaseConfig).length) {
+                    throw new Error("Firebase configuration is missing.");
+                }
+
+                const app = window.firebase.initializeApp(firebaseConfig);
+                db = window.firebase.getFirestore(app);
+                auth = window.firebase.getAuth(app);
+                
+                // 1. Initial Authentication
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await window.firebase.signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await window.firebase.signInAnonymously(auth);
+                }
+                
+                // 2. Auth State Listener
+                window.firebase.onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        elements.userDisplay.textContent = `User ID: ${userId}`;
+                        isAuthReady = true;
+                        // Once authenticated, start listening for data changes
+                        startRealtimeListener(appId);
+                    } else {
+                        isAuthReady = true; // Still ready, but anonymous
+                        console.log("Signed in anonymously.");
+                        startRealtimeListener(appId);
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase Initialization or Auth Error:", error);
+                // Fallback for UI if Firebase fails
+                elements.userDisplay.textContent = 'User ID: Connection Error';
+                elements.button.disabled = true;
+            }
+            
+            // --- UI Initialization (Does not require Firebase data yet) ---
+
+            /**
+             * Initializes the static parts of the UI, like the number grid.
+             */
+            function initializeUI() {
+                elements.table.innerHTML = '';
+                
+                const count = DOUBLE_PICK_SET.size;
+                elements.specialInfo.textContent = `(${count} specific numbers require 2 picks)`;
+
+                // Render the grid items
+                for (let number = 1; number <= MAX_NUMBER; number++) {
+                    const item = document.createElement('div');
+                    item.id = `num-${number}`;
+                    
+                    let className = 'number-item bg-white rounded-md ring-1 ring-gray-200 transition-colors duration-100 hover:bg-gray-200';
+                    item.className = className;
+                    item.textContent = number;
+                    elements.table.appendChild(item);
+                }
+            }
+            
+            // --- Firestore Synchronization ---
+
+            function getGameDocRef(appId) {
+                // Public path for collaborative data: /artifacts/{appId}/public/data/{your_collection_name}/{documentId}
+                return window.firebase.doc(db, 
+                    `artifacts/${appId}/public/data/picker_state/${GAME_ID}`
+                );
+            }
+
+            /**
+             * Starts the real-time listener for the game state document.
+             * @param {string} appId The current application ID.
+             */
+            function startRealtimeListener(appId) {
+                const gameDocRef = getGameDocRef(appId);
+
+                // Attach onSnapshot listener
+                window.firebase.onSnapshot(gameDocRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        
+                        // PickCounts are stored as string keys in Firestore, convert back to number keys for Map
+                        const firestorePickCounts = data.pickCountsMap || {};
+                        const newPickCounts = new Map();
+                        
+                        Object.entries(firestorePickCounts).forEach(([key, value]) => {
+                            newPickCounts.set(parseInt(key), value);
+                        });
+                        
+                        // Update global state from Firestore
+                        pickCounts = newPickCounts;
+                        fullySelectedNumbers = new Set(data.fullySelectedNumbers || []);
+                        lastSelectedNumber = data.lastSelectedNumber || null;
+
+                        // Re-render UI based on new state
+                        updateUIFromState(lastSelectedNumber);
+
+                    } else {
+                        // Document doesn't exist, this is the first time running or after a reset.
+                        console.log("Game state document does not exist. Initializing...");
+                        // Use local state to render initial empty state
+                        pickCounts.clear();
+                        fullySelectedNumbers.clear();
+                        lastSelectedNumber = null;
+                        updateUIFromState(lastSelectedNumber);
+                        
+                        // Note: A user must click "Pick Next Number" or "Reset" to create the document.
+                    }
+                }, (error) => {
+                    console.error("Firestore Snapshot Error:", error);
+                });
+            }
+
+            /**
+             * Renders the entire number grid and header based on the current state.
+             * This function is called every time Firestore updates.
+             * @param {number|null} lastPicked The last number that was picked (for animation).
+             */
+            function updateUIFromState(lastPicked) {
+                elements.display.textContent = lastPicked !== null ? lastPicked : '--';
+                elements.count.textContent = MAX_NUMBER - fullySelectedNumbers.size;
+
+                for (let number = 1; number <= MAX_NUMBER; number++) {
+                    const numberElement = document.getElementById(`num-${number}`);
+                    if (!numberElement) continue;
+
+                    const currentCount = pickCounts.get(number) || 0;
+                    const neededPicks = DOUBLE_PICK_SET.has(number) ? 2 : 1;
+                    
+                    // Clear existing visual state classes
+                    numberElement.classList.remove('selected', 'selected-once', 'hover:bg-gray-200', 'bg-white', 'pick-animation');
+
+                    if (fullySelectedNumbers.has(number)) {
+                        // Fully picked (1 or 2 times)
+                        numberElement.classList.add('selected');
+                    } else if (currentCount === 1) {
+                        // Picked once (only happens for double-pick numbers)
+                        numberElement.classList.add('selected-once');
+                    } else {
+                        // Not picked at all
+                        numberElement.classList.add('bg-white');
+                        numberElement.classList.add('hover:bg-gray-200');
+                    }
+
+                    // Apply animation to the last picked number only
+                    if (number === lastPicked) {
+                        // Ensure animation classes are applied, then removed
+                        numberElement.classList.add('pick-animation');
+                        setTimeout(() => {
+                            numberElement.classList.remove('pick-animation');
+                        }, 400); 
+                        
+                        // Header text flash animation
+                        elements.display.classList.remove('text-yellow-300');
+                        elements.display.classList.add('text-red-500');
+                        setTimeout(() => {
+                            elements.display.classList.remove('text-red-500');
+                            elements.display.classList.add('text-yellow-300');
+                        }, 300);
+                    }
+                }
+                
+                // Show game over modal if all numbers are picked
+                if (fullySelectedNumbers.size === MAX_NUMBER) {
+                     elements.messageBox.classList.remove('hidden');
+                     elements.button.disabled = true;
+                } else {
+                     elements.messageBox.classList.add('hidden');
+                     elements.button.disabled = false;
+                }
+            }
+
+
+            // --- Game Logic and Database Write ---
+            
+            /**
+             * Calculates the next pick and updates Firestore.
+             */
+            async function selectNumber() {
+                if (!isAuthReady) {
+                    console.error("Authentication not ready. Cannot pick number.");
+                    return;
+                }
+                
+                // 1. Find all numbers that still need to be picked (not fully selected)
+                const availablePicks = Array.from({ length: MAX_NUMBER }, (_, i) => i + 1).filter(num => {
+                    const neededPicks = DOUBLE_PICK_SET.has(num) ? 2 : 1;
+                    const currentPicks = pickCounts.get(num) || 0;
+                    return currentPicks < neededPicks;
+                });
+
+                if (availablePicks.length === 0) {
+                    return; // Already handled by UI
+                }
+
+                // 2. Pick a random number
+                const randomIndex = Math.floor(Math.random() * availablePicks.length);
+                const selected = availablePicks[randomIndex];
+
+                // 3. Calculate new state locally
+                const currentCount = pickCounts.get(selected) || 0;
+                const newCount = currentCount + 1;
+                const neededPicks = DOUBLE_PICK_SET.has(selected) ? 2 : 1;
+                
+                const newPickCounts = new Map(pickCounts);
+                newPickCounts.set(selected, newCount);
+
+                const newFullySelectedNumbers = new Set(fullySelectedNumbers);
+                if (newCount >= neededPicks) {
+                    newFullySelectedNumbers.add(selected); 
+                }
+                
+                // 4. Prepare data for Firestore (Keys must be strings for map/object fields)
+                const pickCountsMapForFirestore = {};
+                newPickCounts.forEach((value, key) => {
+                    // Only store numbers that have been picked at least once
+                    if (value > 0) {
+                        pickCountsMapForFirestore[key.toString()] = value;
+                    }
+                });
+
+                const dataToWrite = {
+                    pickCountsMap: pickCountsMapForFirestore,
+                    fullySelectedNumbers: Array.from(newFullySelectedNumbers),
+                    lastSelectedNumber: selected
+                };
+                
+                // 5. Write the new state to Firestore
+                elements.button.disabled = true; // Disable button to prevent double clicks during write
+                try {
+                    await window.firebase.setDoc(getGameDocRef(appId), dataToWrite, { merge: false });
+                } catch (error) {
+                    console.error("Error writing document:", error);
+                    // Re-enable button on error
+                    elements.button.disabled = false;
+                }
+                // Note: The button is re-enabled by the onSnapshot listener when the update comes back.
+            }
+            
+            /**
+             * Resets the entire game state in the database.
+             */
+            async function resetGame() {
+                if (!isAuthReady) {
+                    console.error("Authentication not ready. Cannot reset game.");
+                    return;
+                }
+                elements.confirmModal.classList.add('hidden');
+                elements.button.disabled = true;
+                
+                const initialData = {
+                    pickCountsMap: {},
+                    fullySelectedNumbers: [],
+                    lastSelectedNumber: null
+                };
+                
+                try {
+                    // Overwrite the current document with empty initial state
+                    await window.firebase.setDoc(getGameDocRef(appId), initialData, { merge: false });
+                } catch (error) {
+                    console.error("Error resetting document:", error);
+                }
+                // The onSnapshot listener will handle the UI update for all clients.
+            }
+            
+            // --- Event Handlers ---
+            
+            function handleReset() {
+                 elements.confirmModal.classList.remove('hidden');
+            }
+            
+            // Attach event listeners
+            elements.button.addEventListener('click', selectNumber);
+            elements.confirmResetBtn.addEventListener('click', resetGame);
+
+            // Initial UI setup
+            initializeUI();
+        };
+
+    </script>
+</body>
+</html>
