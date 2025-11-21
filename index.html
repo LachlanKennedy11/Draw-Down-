@@ -216,7 +216,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global Firebase variables will be set during initialization
@@ -586,30 +586,24 @@
         // --- Initialization and Event Listeners ---
         
         async function initializeFirebase() {
-            // 🛑 CRITICAL: YOU MUST REPLACE ALL PLACEHOLDER VALUES BELOW 
-            // with your actual Firebase project configuration credentials
-            // obtained from your Firebase console -> Project Settings.
-            const firebaseConfig = {
-                // 1. YOUR API KEY
-                apiKey: "AIzaSyCf89wtrye4grXf0LY1cKO6GK0XIAqqVuU",
-                // 2. YOUR AUTH DOMAIN (e.g., "my-project-1234.firebaseapp.com")
-                authDomain: "drawdown-ddfdf.firebaseapp.com",
-                // 3. YOUR PROJECT ID (e.g., "my-project-1234")
-                projectId: "drawdown-ddfdf",
-                // 4. YOUR STORAGE BUCKET (e.g., "my-project-1234.appspot.com")
-                storageBucket: "drawdown-ddfdf.firebasestorage.app",
-                // 5. YOUR MESSAGING SENDER ID
-                messagingSenderId: "949823482010",
-                // 6. YOUR APP ID
-                appId: "1:949823482010:web:be78dd021b4c9fa9081723"
-            };
+            // --- FIREBASE CONFIG & SETUP (FIXED TO USE ENVIRONMENT VARIABLES) ---
             
-            try {
-                // Check if the user replaced the config placeholders
-                if (firebaseConfig.apiKey.includes('YOUR_ACTUAL') || !firebaseConfig.projectId.includes('.')) {
-                    throw new Error("Missing Firebase Config: Please update the 'firebaseConfig' object inside the initializeFirebase function in the HTML file with your actual Firebase project details.");
-                }
+            // 1. Safely load the Firebase configuration from the environment variable
+            const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+            if (!firebaseConfigString) {
+                console.error("Firebase config is missing from the environment.");
+                throw new Error("Missing Environment Configuration for Firebase.");
+            }
+            const firebaseConfig = JSON.parse(firebaseConfigString);
+            
+            // 2. Safely load the application ID
+            const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId || 'default-app-id';
+            
+            // 3. Define the exact document path used by the security rules
+            // NOTE: Using the environment's app ID for the artifact path
+            GAME_DOC_PATH = `artifacts/${appId}/public/data/ticketGame/gameState`;
 
+            try {
                 // Set Firestore log level to debug for better diagnostics
                 setLogLevel('debug');
                 
@@ -617,42 +611,40 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                // Use the projectId from the config as the unique app identifier
-                const appId = firebaseConfig.projectId;
-                // Define the exact document path used by the security rules
-                GAME_DOC_PATH = `artifacts/${appId}/public/data/ticketGame/gameState`;
-
-                // For static hosting like GitHub Pages, we use anonymous sign-in.
-                await signInAnonymously(auth);
-                console.log("Signed in anonymously.");
+                // 4. Handle authentication using the provided custom token or sign in anonymously
+                const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                 
-                // 3. Start listening for real-time updates now that Auth is complete
+                if (authToken) {
+                    await signInWithCustomToken(auth, authToken);
+                    console.log("Signed in with custom token.");
+                } else {
+                    await signInAnonymously(auth);
+                    console.log("Signed in anonymously.");
+                }
+
+                // 5. Start listening for real-time updates now that Auth is complete
                 startRealTimeListener();
 
-                // 4. Update userId based on auth state change
+                // 6. Update userId based on auth state change
                 auth.onAuthStateChanged(user => {
                     if (user) {
                         userId = user.uid;
                         elements.userIdDisplay.textContent = userId;
                         // The onSnapshot listener will handle game state initialization/updates
                     } else {
-                        // Fallback user ID if authentication somehow fails, though it should be handled by anonymous sign-in
+                        // Fallback user ID if authentication somehow fails
                         userId = crypto.randomUUID();
                         elements.userIdDisplay.textContent = userId;
                     }
                 });
 
-
             } catch (error) {
                 console.error("Firebase Initialization Error:", error);
-                // Display error message to user
+                // Display a generic connection error message
                 elements.loadingOverlay.innerHTML = `
                     <div class="text-center p-6 bg-red-100 rounded-xl shadow-lg border border-red-300">
                         <p class="text-xl text-red-700 font-bold mb-3">Connection Failed</p>
-                        <p class="text-base text-red-600 mb-4">The game could not connect to Firebase.</p>
-                        <p class="text-gray-700 text-sm bg-red-200 p-3 rounded-lg text-left">
-                            <span class="font-extrabold text-indigo-800">ACTION REQUIRED:</span> You need to replace the **placeholder** Firebase configuration in the JavaScript code with your **actual** project configuration to make the app work on GitHub Pages.
-                        </p>
+                        <p class="text-base text-red-600 mb-4">The game could not connect to Firebase. Check console for details.</p>
                         <p class="text-xs mt-3 text-gray-500">Error: ${error.message}</p>
                     </div>
                 `;
@@ -682,7 +674,7 @@
                     console.log("No game state found. Initializing new game with current user as owner.");
                     
                     if (auth.currentUser) {
-                         // The user is authenticated (anonymously), attempt to create the document
+                         // The user is authenticated, attempt to create the document
                          await resetGame();
                     } else {
                         // User is not authenticated yet, let the auth listener handle it.
