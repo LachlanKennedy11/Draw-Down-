@@ -18,8 +18,8 @@
             }
         }
     </script>
-    <style>
-        /* Custom styles for the number grid */
+    <>
+        /* Custom s for the number grid */
         .number-grid {
             /* Responsive grid: default 10 columns, larger screens get more */
             display: grid;
@@ -109,7 +109,7 @@
             z-index: 100;
             transition: opacity 0.3s ease;
         }
-    </style>
+    </>
 </head>
 <body class="bg-gray-50 min-h-screen p-4 md:p-8 font-sans">
 
@@ -589,7 +589,15 @@
                 elements.loadingOverlay.classList.remove('hidden');
             });
         }
-        
+        const firebaseConfig = {
+  apiKey: "AIzaSyCf89wtrye4grXf0LY1cKO6GK0XIAqqVuU",
+  authDomain: "drawdown-ddfdf.firebaseapp.com",
+  projectId: "drawdown-ddfdf",
+  storageBucket: "drawdown-ddfdf.firebasestorage.app",
+  messagingSenderId: "949823482010",
+  appId: "1:949823482010:web:be78dd021b4c9fa9081723",
+  measurementId: "G-08WENN5YBW"
+};
         window.onload = function() {
             initializeFirebase();
             
