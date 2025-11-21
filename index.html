@@ -52,18 +52,17 @@
             position: relative;
         }
 
-        /* Style for numbers picked once (only applicable to special numbers) */
+        /* State 1: Picked Once (Only for double-pick numbers) */
         .number-item.selected-once {
             background-color: #fcd34d; /* Amber 300 */
             color: #b45309; /* Amber 800 */
             opacity: 0.7;
-            /* Use a dashed ring to show it's 'on deck' but not fully out */
             box-shadow: 0 0 0 2px #b45309 inset;
             transform: scale(1.05);
             font-weight: 700; /* font-bold */
         }
 
-        /* Style for numbers fully selected (1 pick for normal, 2 picks for special) */
+        /* State 2: Fully Removed (Crossed out) - RED */
         .number-item.selected {
             text-decoration: line-through;
             opacity: 0.4;
@@ -71,6 +70,17 @@
             color: #b91c1c; /* Red 700 */
             transform: scale(0.95);
             font-weight: 500;
+        }
+        
+        /* State 3: Kept (New state, requested by user) - YELLOW */
+        .number-item.kept {
+            background-color: #fcd34d; /* Yellow/Amber 300 */
+            color: #451a03; /* Brown/Dark Amber */
+            border: 3px solid #f97316; /* Orange 600 border */
+            opacity: 1;
+            font-weight: 800;
+            text-decoration: none;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
         }
         
         /* --- Animation for new pick --- */
@@ -83,17 +93,39 @@
         .pick-animation {
             animation: pick-flash 0.4s ease-out;
         }
+
+        /* Loading Overlay */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            transition: opacity 0.3s ease;
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen p-4 md:p-8 font-sans">
 
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="animate-spin rounded-full h-12 w-12 border-4 border-t-indigo-500 border-gray-200"></div>
+        <p class="mt-4 text-lg text-indigo-600 font-semibold">Connecting to the shared game...</p>
+    </div>
+
     <!-- Main Application Container -->
-    <div class="max-w-6xl mx-auto bg-white shadow-xl rounded-2xl overflow-hidden">
+    <div id="app-container" class="max-w-6xl mx-auto bg-white shadow-xl rounded-2xl overflow-hidden hidden">
         
         <!-- Header and Controls -->
         <header class="p-6 bg-indigo-600 text-white flex flex-col md:flex-row justify-between items-start md:items-center">
             <h1 class="text-3xl font-extrabold mb-4 md:mb-0">
-                Draw-down Ticket Picker
+                Draw-down Ticket Picker (Shared Game)
             </h1>
             <div class="flex items-center space-x-4">
                 <div class="text-right">
@@ -112,19 +144,20 @@
         <!-- Status and Reset -->
         <div class="p-6 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0">
             <p class="text-sm text-gray-600">Total Available (Remaining): <span id="available-count" class="font-bold text-indigo-600">500</span></p>
-            <p id="special-info" class="text-xs text-orange-500 font-medium transition duration-150">
-                <!-- This text will be updated by JS based on the USER_DOUBLE_PICK_NUMBERS list -->
-                (Loading special number list...)
+            <!-- REMOVED THE TEXT about double-pick numbers -->
+            <p id="special-info" class="text-xs text-orange-500 font-medium transition duration-150 hidden">
             </p>
-            <!-- Removed User ID display -->
-            <button id="reset-button" class="text-sm text-red-500 hover:text-red-700 font-medium transition duration-150" onclick="resetGame()">
-                Reset All
+            <p id="user-info" class="text-xs text-gray-500">
+                Your ID: <span id="user-id-display" class="font-mono font-bold">...</span>
+            </p>
+            <button id="reset-button" class="text-sm text-red-500 hover:text-red-700 font-medium transition duration-150" onclick="handleResetConfirmation()">
+                Reset Game
             </button>
         </div>
         
         <!-- Number Grid Container -->
         <main class="p-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Numbers Table</h2>
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Shared Numbers Table</h2>
             <div id="number-table" class="number-grid bg-gray-100 p-2 rounded-lg border border-gray-200">
                 <!-- Numbers will be injected here by JavaScript -->
             </div>
@@ -135,130 +168,289 @@
             <div class="bg-white p-8 rounded-xl shadow-2xl max-w-sm text-center">
                 <svg class="w-12 h-12 text-green-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 <h3 class="text-2xl font-bold text-gray-800 mb-2">All Numbers Picked!</h3>
-                <p class="text-gray-600 mb-6">You've successfully crossed out all 500 tickets.</p>
-                <button onclick="document.getElementById('message-box').classList.add('hidden'); resetGame();" class="px-4 py-2 bg-indigo-500 text-white font-medium rounded-lg hover:bg-indigo-600">Start Over</button>
+                <p class="text-gray-600 mb-6">The game is complete!</p>
+                <button onclick="document.getElementById('message-box').classList.add('hidden'); handleResetConfirmation();" class="px-4 py-2 bg-indigo-500 text-white font-medium rounded-lg hover:bg-indigo-600">Start Over</button>
+            </div>
+        </div>
+
+        <!-- Confirmation Modal for Reset -->
+        <div id="reset-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+            <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm text-center">
+                <h3 class="text-xl font-bold text-red-600 mb-2">Confirm Reset</h3>
+                <p class="text-gray-600 mb-6">Are you sure you want to reset the game for **everyone**? This cannot be undone.</p>
+                <div class="flex justify-center space-x-4">
+                    <button onclick="document.getElementById('reset-modal').classList.add('hidden')" 
+                            class="px-4 py-2 bg-gray-300 text-gray-800 font-medium rounded-lg hover:bg-gray-400 transition">
+                        Cancel
+                    </button>
+                    <button onclick="resetGame()" 
+                            class="px-4 py-2 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition">
+                        Yes, Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Decision Modal -->
+        <div id="decision-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+            <div class="bg-white p-8 rounded-xl shadow-2xl max-w-sm text-center">
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">Decision Time!</h3>
+                <p class="text-gray-600 mb-6">The number <span id="decision-number" class="font-bold text-indigo-600 text-xl">--</span> has been picked. Do you want to **Keep** it (mark yellow) or **Remove** it (cross out)?</p>
+                <div class="flex justify-center space-x-4">
+                    <button id="keep-button" 
+                            class="px-6 py-3 bg-yellow-500 text-gray-900 font-bold rounded-lg shadow-md hover:bg-yellow-400 transition">
+                        Keep (Mark Yellow)
+                    </button>
+                    <button id="remove-button" 
+                            class="px-6 py-3 bg-red-500 text-white font-bold rounded-lg shadow-md hover:bg-red-600 transition">
+                        Remove (Cross Out)
+                    </button>
+                </div>
             </div>
         </div>
         
-        <!-- Removed Confirmation Modal -->
-
     </div>
 
-    <script>
-        // Global variables for game state (managed locally)
-        let allNumbers = [];
-        let doublePickNumbers = new Set(); // Stores numbers that need 2 picks
-        let pickCounts = new Map();        // Stores current pick count for each number
-        let fullySelectedNumbers = new Set(); // Stores numbers that have met their pick requirement (1 or 2)
-        
-        const MAX_NUMBER = 500;
-        
-        // <<< USER-DEFINED DOUBLE PICK NUMBERS >>>
-        // This array will be used to determine which numbers require 2 picks.
-        const USER_DOUBLE_PICK_NUMBERS = [10, 20, 30, 40, 50, 100, 200, 300, 400, 500];
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, getDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // --- FIREBASE SETUP ---
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth;
+        let userId = 'loading';
+        const GAME_DOC_PATH = `artifacts/${appId}/public/data/ticketGame/gameState`;
+        
+        // --- GAME CONSTANTS & STATE ---
+        const MAX_NUMBER = 500;
+        const USER_DOUBLE_PICK_NUMBERS = [10, 20, 30, 40, 50, 100, 200, 300, 400, 500];
+        
+        // Local state mirroring the database
+        let localState = {
+            pickCounts: {}, // {number: count}
+            fullySelectedNumbers: [], // [number, ...]
+            keptNumbers: [], // [number, ...]
+            lastPickedNumber: null,
+            doublePickNumbers: USER_DOUBLE_PICK_NUMBERS,
+        };
+
+        let lastPickedNumber = null; // Stores the number picked before the local decision
+
+        // --- DOM Elements ---
         const elements = {
+            appContainer: document.getElementById('app-container'),
+            loadingOverlay: document.getElementById('loading-overlay'),
             table: document.getElementById('number-table'),
             display: document.getElementById('selected-display'),
             button: document.getElementById('select-button'),
             count: document.getElementById('available-count'),
             messageBox: document.getElementById('message-box'),
-            specialInfo: document.getElementById('special-info')
+            specialInfo: document.getElementById('special-info'), // Now hidden and unused for text
+            resetButton: document.getElementById('reset-button'),
+            userIdDisplay: document.getElementById('user-id-display'),
+            decisionModal: document.getElementById('decision-modal'),
+            decisionNumberDisplay: document.getElementById('decision-number'),
+            keepButton: document.getElementById('keep-button'),
+            removeButton: document.getElementById('remove-button'),
+            resetModal: document.getElementById('reset-modal'),
         };
-
-        // --- Core Functions ---
+        
+        // --- UTILITY FUNCTIONS ---
 
         /**
-         * Initializes the array of numbers and renders the initial table layout.
+         * Safely saves the current local state to Firestore.
          */
-        function initializeGame() {
-            // 1. Reset state
-            allNumbers = Array.from({ length: MAX_NUMBER }, (_, i) => i + 1);
-            pickCounts.clear();
-            doublePickNumbers.clear();
-            fullySelectedNumbers.clear();
-            
-            elements.table.innerHTML = '';
-            elements.display.textContent = '--';
-            elements.button.disabled = false;
-            elements.count.textContent = MAX_NUMBER;
-
-            // 2. Use the user-defined list for double-pick numbers
-            USER_DOUBLE_PICK_NUMBERS.forEach(num => {
-                // Only add if the number is within the valid range (1 to 500)
-                if (num >= 1 && num <= MAX_NUMBER) {
-                    doublePickNumbers.add(num);
-                }
-            });
-            
-            const count = doublePickNumbers.size;
-            elements.specialInfo.textContent = `(${count} specific numbers require 2 picks)`;
-
-            // 3. Render the grid items
-            allNumbers.forEach(number => {
-                const item = document.createElement('div');
-                item.id = `num-${number}`;
-                
-                // Base classes
-                let className = 'number-item bg-white rounded-md ring-1 ring-gray-200 transition-colors duration-100 hover:bg-gray-200';
-
-                item.className = className;
-                item.textContent = number;
-                elements.table.appendChild(item);
-            });
-            
-            // Hide game over message
-            elements.messageBox.classList.add('hidden');
+        async function saveGameState(state) {
+            if (!db || !userId || !state) return;
+            elements.button.disabled = true;
+            try {
+                await setDoc(doc(db, GAME_DOC_PATH), state);
+                console.log("Game state saved successfully.");
+            } catch (error) {
+                console.error("Error saving game state:", error);
+            } finally {
+                // The onSnapshot listener will re-enable the button after the update is processed
+            }
+        }
+        
+        /**
+         * Confirms with the user before resetting the game (since it affects everyone).
+         */
+        function handleResetConfirmation() {
+            elements.resetModal.classList.remove('hidden');
         }
 
         /**
-         * Selects a random available number, updates state, and updates the UI.
+         * Resets the game state in Firestore.
          */
-        function selectNumber() {
-            // 1. Find all numbers that still need to be picked (not fully selected)
-            const availablePicks = allNumbers.filter(num => {
-                const neededPicks = doublePickNumbers.has(num) ? 2 : 1;
-                const currentPicks = pickCounts.get(num) || 0;
-                return currentPicks < neededPicks;
+        async function resetGame() {
+            elements.resetModal.classList.add('hidden');
+            elements.messageBox.classList.add('hidden');
+            
+            const initialState = {
+                pickCounts: {},
+                fullySelectedNumbers: [],
+                keptNumbers: [],
+                lastPickedNumber: null,
+                doublePickNumbers: USER_DOUBLE_PICK_NUMBERS,
+            };
+
+            await saveGameState(initialState);
+            console.log('Game has been reset in Firestore.');
+            // UI will update automatically via onSnapshot
+        }
+
+        // --- CORE GAME LOGIC (RUNS ON STATE CHANGE) ---
+        
+        /**
+         * Applies the received Firestore state to the local game and updates the UI.
+         */
+        function applyStateToUI(state) {
+            if (!state || Object.keys(state).length === 0) {
+                // This happens when the document is first created/empty. Initialize.
+                // Only the first user to load will trigger the creation of the document.
+                if (localState.lastPickedNumber === null) {
+                    saveGameState({
+                        pickCounts: {},
+                        fullySelectedNumbers: [],
+                        keptNumbers: [],
+                        lastPickedNumber: null,
+                        doublePickNumbers: USER_DOUBLE_PICK_NUMBERS,
+                    });
+                }
+                return;
+            }
+
+            localState = {
+                ...state,
+                // Ensure sets are used locally for fast lookups
+                pickCounts: new Map(Object.entries(state.pickCounts || {})),
+                fullySelectedNumbers: new Set(state.fullySelectedNumbers || []),
+                keptNumbers: new Set(state.keptNumbers || []),
+                doublePickNumbers: new Set(state.doublePickNumbers || []),
+            };
+            
+            elements.decisionModal.classList.add('hidden');
+            elements.button.disabled = false; // Enable button when state is stable
+            
+            // Re-render the entire table based on the new state
+            renderNumberGrid();
+            
+            const remaining = MAX_NUMBER - localState.fullySelectedNumbers.size;
+            elements.count.textContent = remaining;
+            
+            // elements.specialInfo.textContent = `(${localState.doublePickNumbers.size} specific numbers require 2 picks)`; 
+            // The line above was removed as requested by the user.
+
+            if (localState.lastPickedNumber) {
+                elements.display.textContent = localState.lastPickedNumber;
+            } else {
+                elements.display.textContent = '--';
+            }
+            
+            if (remaining === 0) {
+                elements.messageBox.classList.remove('hidden');
+                elements.button.disabled = true;
+            } else {
+                elements.messageBox.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Renders the numbers on the screen based on the current localState.
+         */
+        function renderNumberGrid() {
+            if (elements.table.children.length === 0) {
+                // Initial render
+                for (let i = 1; i <= MAX_NUMBER; i++) {
+                    const item = document.createElement('div');
+                    item.id = `num-${i}`;
+                    item.className = 'number-item bg-white rounded-md ring-1 ring-gray-200 transition-colors duration-100 hover:bg-gray-200';
+                    item.textContent = i;
+                    elements.table.appendChild(item);
+                }
+            }
+
+            // Update classes for existing elements
+            for (let i = 1; i <= MAX_NUMBER; i++) {
+                const item = document.getElementById(`num-${i}`);
+                if (!item) continue;
+                
+                const currentCount = localState.pickCounts.get(i) || 0;
+                
+                // Clear existing visual state classes
+                item.classList.remove('selected', 'selected-once', 'kept', 'hover:bg-gray-200', 'bg-white');
+
+                if (localState.fullySelectedNumbers.has(i)) {
+                    // State 2: Fully Removed (Red, crossed out)
+                    item.classList.add('selected');
+                } else if (localState.keptNumbers.has(i)) {
+                    // State 3: Kept (Yellow/Amber)
+                    item.classList.add('kept');
+                } else if (currentCount === 1 && localState.doublePickNumbers.has(i)) {
+                    // State 1: Picked once (only for double-pick numbers)
+                    item.classList.add('selected-once');
+                } else {
+                     // Default state (not picked at all)
+                    item.classList.add('bg-white');
+                    item.classList.add('hover:bg-gray-200');
+                }
+            }
+        }
+
+        // --- USER ACTIONS (TRIGGER FIRESTORE WRITE) ---
+
+        /**
+         * Selects a random available number and initiates the decision process.
+         */
+        async function selectNumber() {
+            elements.button.disabled = true;
+
+            const neededPicks = (num) => localState.doublePickNumbers.has(num) ? 2 : 1;
+
+            // Find all numbers that are available to be picked
+            const availablePicks = Array.from({ length: MAX_NUMBER }, (_, i) => i + 1).filter(num => {
+                const currentPicks = localState.pickCounts.get(num) || 0;
+                
+                // A number is available if it hasn't met its removal criteria OR if it's currently kept.
+                return currentPicks < neededPicks(num) || localState.keptNumbers.has(num);
             });
 
             if (availablePicks.length === 0) {
-                // Game over
                 elements.messageBox.classList.remove('hidden');
                 elements.button.disabled = true;
                 return;
             }
 
-            // 2. Pick a random number
+            // Pick a random number
             const randomIndex = Math.floor(Math.random() * availablePicks.length);
             const selected = availablePicks[randomIndex];
+            
+            // Flash the number immediately
+            flashNumber(selected);
 
-            // 3. Update game state
-            const currentCount = pickCounts.get(selected) || 0;
-            const newCount = currentCount + 1;
-            pickCounts.set(selected, newCount);
-
-            const neededPicks = doublePickNumbers.has(selected) ? 2 : 1;
-            const isFullySelected = newCount >= neededPicks;
-
-            if (isFullySelected) {
-                fullySelectedNumbers.add(selected); 
+            // 3. Check if the picked number is already kept (yellow)
+            if (localState.keptNumbers.has(selected)) {
+                // AUTOMATIC REMOVAL (Kept number picked again)
+                await handleDecision(selected, 'remove', true);
+            } else {
+                // MANUAL DECISION
+                lastPickedNumber = selected;
+                showDecisionModal(selected);
             }
-
-            // 4. Update UI
-            updateUI(selected, newCount, neededPicks);
         }
-
+        
         /**
-         * Updates the display, crosses out the number in the table, and updates the count.
-         * @param {number} selected The number that was just picked.
-         * @param {number} currentCount The new pick count for this number.
-         * @param {number} neededPicks The total picks required (1 or 2).
+         * Updates the header display and applies the animation flash.
          */
-        function updateUI(selected, currentCount, neededPicks) {
-            // Update the display area
+        function flashNumber(selected) {
             elements.display.textContent = selected;
-            // Visual feedback animation (text flash)
             elements.display.classList.remove('text-yellow-300');
             elements.display.classList.add('text-red-500');
             setTimeout(() => {
@@ -266,58 +458,161 @@
                 elements.display.classList.add('text-yellow-300');
             }, 300);
 
-            // Update the number element's classes
             const numberElement = document.getElementById(`num-${selected}`);
             if (numberElement) {
-                // Apply pulse animation to the picked number
                 numberElement.classList.add('pick-animation');
                 setTimeout(() => {
                     numberElement.classList.remove('pick-animation');
-                }, 400); // Duration matches CSS animation
-
-                // Clear existing visual state classes
-                numberElement.classList.remove('selected', 'selected-once', 'hover:bg-gray-200', 'bg-white');
-                
-                if (currentCount === neededPicks) {
-                    // Fully picked (1 or 2 times)
-                    numberElement.classList.add('selected');
-                } else if (currentCount === 1) {
-                    // Picked once (only happens for double-pick numbers)
-                    numberElement.classList.add('selected-once');
-                } else {
-                     // Add back white background for numbers that haven't been picked at all
-                    numberElement.classList.add('bg-white');
-                    numberElement.classList.add('hover:bg-gray-200');
-                }
-            }
-
-            // Update available count (based on unique numbers fully selected)
-            elements.count.textContent = MAX_NUMBER - fullySelectedNumbers.size;
-            
-            // Re-check for game over after updating the count
-            if (fullySelectedNumbers.size === MAX_NUMBER) {
-                 elements.messageBox.classList.remove('hidden');
-                 elements.button.disabled = true;
+                }, 400); 
             }
         }
 
         /**
-         * Resets the game to the initial state.
+         * Shows the modal asking the user to Keep or Remove the picked number.
+         * @param {number} selected The number that was just picked.
          */
-        function resetGame() {
-            // Re-initialize all elements
-            initializeGame();
-            console.log('Game has been reset.');
+        function showDecisionModal(selected) {
+            elements.decisionNumberDisplay.textContent = selected;
+            elements.decisionModal.classList.remove('hidden');
         }
 
-        // --- Event Listeners and Initialization ---
+        /**
+         * Handles the decision (manual or automatic) and updates the Firestore state.
+         * @param {number} selected The number to process.
+         * @param {string} action 'keep' or 'remove'.
+         * @param {boolean} [isAutomatic=false] If true, skips hiding the modal (as the modal isn't shown).
+         */
+        async function handleDecision(selected, action, isAutomatic = false) {
+            
+            // Ensure button is disabled while writing to prevent double-click race condition
+            elements.button.disabled = true;
+            
+            const neededPicks = localState.doublePickNumbers.has(selected) ? 2 : 1;
+            const newPickCounts = { ...Object.fromEntries(localState.pickCounts.entries()) };
+            const newFullySelected = Array.from(localState.fullySelectedNumbers);
+            const newKept = Array.from(localState.keptNumbers);
+            
+            const currentCount = newPickCounts[selected] || 0;
+            const newCount = currentCount + 1;
+            newPickCounts[selected] = newCount;
+            
+            // Update Kept/Removed Sets
+            if (action === 'keep') {
+                if (!newKept.includes(selected)) {
+                    newKept.push(selected);
+                }
+            } else if (action === 'remove') {
+                if (newKept.includes(selected)) {
+                    // Remove from kept list if it was yellow
+                    const index = newKept.indexOf(selected);
+                    if (index > -1) newKept.splice(index, 1);
+                }
+                
+                // If the number meets the required pick count, it's fully removed
+                if (newCount >= neededPicks && !newFullySelected.includes(selected)) {
+                    newFullySelected.push(selected);
+                }
+            }
 
-        // Attach event listener to the pick button
-        elements.button.addEventListener('click', selectNumber);
+            // Save the new state to Firestore
+            const newState = {
+                pickCounts: newPickCounts,
+                fullySelectedNumbers: newFullySelected,
+                keptNumbers: newKept,
+                lastPickedNumber: selected,
+                doublePickNumbers: USER_DOUBLE_PICK_NUMBERS,
+            };
 
-        // Run the initialization when the window loads
-        window.onload = initializeGame;
+            await saveGameState(newState);
+
+            // Clean up local decision variables
+            lastPickedNumber = null;
+            if (!isAutomatic) {
+                elements.decisionModal.classList.add('hidden');
+            }
+            // Button is re-enabled by onSnapshot
+        }
+        
+        // --- Initialization and Event Listeners ---
+        
+        async function initializeFirebase() {
+            try {
+                // Set Firestore log level to debug for better diagnostics
+                setLogLevel('debug');
+                
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Authenticate (use custom token if provided, otherwise sign in anonymously)
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                userId = auth.currentUser?.uid || crypto.randomUUID();
+                elements.userIdDisplay.textContent = userId;
+
+                // Start listening for real-time updates
+                startRealTimeListener();
+
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                // Updated failure message to be more helpful
+                elements.loadingOverlay.innerHTML = '<div class="text-center"><p class="text-xl text-red-600 font-bold mb-2">Failed to connect to the shared game.</p><p class="text-lg text-red-500">Please open your browser\'s Developer Console (F12 or Cmd+Option+J) to see the detailed error message.</p></div>';
+                elements.appContainer.classList.add('hidden');
+            }
+        }
+        
+        function startRealTimeListener() {
+            const gameDocRef = doc(db, GAME_DOC_PATH);
+
+            onSnapshot(gameDocRef, async (docSnapshot) => {
+                elements.loadingOverlay.classList.add('hidden');
+                elements.appContainer.classList.remove('hidden');
+
+                if (docSnapshot.exists()) {
+                    // Load the game state from the document
+                    const remoteState = docSnapshot.data();
+                    applyStateToUI(remoteState);
+                    console.log("Game state updated from network.");
+                } else {
+                    // Document doesn't exist yet, create the initial state
+                    console.log("No game state found. Initializing new game.");
+                    await resetGame();
+                }
+            }, (error) => {
+                console.error("Firestore real-time listener failed:", error);
+                // Show a clear error if the listener fails (often due to security rules)
+                elements.loadingOverlay.innerHTML = '<div class="text-center"><p class="text-xl text-red-600 font-bold mb-2">Real-time connection failed!</p><p class="text-lg text-red-500">Check the console (F12) for security or network errors.</p></div>';
+                elements.loadingOverlay.classList.remove('hidden');
+            });
+        }
+        
+        window.onload = function() {
+            initializeFirebase();
+            
+            // Attach event listeners for user actions
+            if (elements.button) {
+                elements.button.addEventListener('click', selectNumber);
+            }
+            
+            // Attach listeners for the modal buttons
+            if (elements.keepButton) {
+                elements.keepButton.addEventListener('click', () => {
+                    if (lastPickedNumber !== null) handleDecision(lastPickedNumber, 'keep');
+                });
+            }
+            if (elements.removeButton) {
+                elements.removeButton.addEventListener('click', () => {
+                    if (lastPickedNumber !== null) handleDecision(lastPickedNumber, 'remove');
+                });
+            }
+        };
 
     </script>
+</body>
+</html>
 </body>
 </html>
