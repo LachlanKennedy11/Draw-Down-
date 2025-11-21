@@ -18,8 +18,8 @@
             }
         }
     </script>
-    <>
-        /* Custom s for the number grid */
+    <style>
+        /* Custom styles for the number grid */
         .number-grid {
             /* Responsive grid: default 10 columns, larger screens get more */
             display: grid;
@@ -109,7 +109,7 @@
             z-index: 100;
             transition: opacity 0.3s ease;
         }
-    </>
+    </style>
 </head>
 <body class="bg-gray-50 min-h-screen p-4 md:p-8 font-sans">
 
@@ -142,17 +142,19 @@
         </header>
 
         <!-- Status and Reset -->
-        <div class="p-6 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0">
-            <p class="text-sm text-gray-600">Total Available (Remaining): <span id="available-count" class="font-bold text-indigo-600">500</span></p>
-            <!-- REMOVED THE TEXT about double-pick numbers -->
-            <p id="special-info" class="text-xs text-orange-500 font-medium transition duration-150 hidden">
-            </p>
-            <p id="user-info" class="text-xs text-gray-500">
-                Your ID: <span id="user-id-display" class="font-mono font-bold">...</span>
-            </p>
-            <button id="reset-button" class="text-sm text-red-500 hover:text-red-700 font-medium transition duration-150" onclick="handleResetConfirmation()">
-                Reset Game
-            </button>
+        <div class="p-6 border-b border-gray-100 flex flex-col lg:flex-row justify-between items-start lg:items-center space-y-3 lg:space-y-0 text-sm">
+            <p class="text-gray-600">Total Available (Remaining): <span id="available-count" class="font-bold text-indigo-600">500</span></p>
+            
+            <p id="owner-status" class="font-semibold text-center py-1 px-3 rounded-full"></p>
+
+            <div class="flex items-center space-x-4">
+                 <p id="user-info" class="text-xs text-gray-500">
+                    Your ID: <span id="user-id-display" class="font-mono font-bold">...</span>
+                </p>
+                <button id="reset-button" class="text-red-500 hover:text-red-700 font-medium transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed" onclick="handleResetConfirmation()">
+                    Reset Game
+                </button>
+            </div>
         </div>
         
         <!-- Number Grid Container -->
@@ -214,19 +216,15 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, getDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- FIREBASE SETUP ---
-        // Global variables provided by the environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
+        // Global Firebase variables will be set during initialization
         let db, auth;
         let userId = 'loading';
-        const GAME_DOC_PATH = `artifacts/${appId}/public/data/ticketGame/gameState`;
-        
+        let GAME_DOC_PATH = null; // Will be set after firebaseConfig is loaded
+        let isAdmin = false; // Tracks if the current user is the owner
+
         // --- GAME CONSTANTS & STATE ---
         const MAX_NUMBER = 500;
         const USER_DOUBLE_PICK_NUMBERS = [10, 20, 30, 40, 50, 100, 200, 300, 400, 500];
@@ -238,6 +236,7 @@
             keptNumbers: [], // [number, ...]
             lastPickedNumber: null,
             doublePickNumbers: USER_DOUBLE_PICK_NUMBERS,
+            ownerId: null, // ID of the user who can make changes
         };
 
         let lastPickedNumber = null; // Stores the number picked before the local decision
@@ -251,7 +250,7 @@
             button: document.getElementById('select-button'),
             count: document.getElementById('available-count'),
             messageBox: document.getElementById('message-box'),
-            specialInfo: document.getElementById('special-info'), // Now hidden and unused for text
+            specialInfo: document.getElementById('special-info'), 
             resetButton: document.getElementById('reset-button'),
             userIdDisplay: document.getElementById('user-id-display'),
             decisionModal: document.getElementById('decision-modal'),
@@ -259,6 +258,7 @@
             keepButton: document.getElementById('keep-button'),
             removeButton: document.getElementById('remove-button'),
             resetModal: document.getElementById('reset-modal'),
+            ownerStatus: document.getElementById('owner-status'), // NEW
         };
         
         // --- UTILITY FUNCTIONS ---
@@ -267,15 +267,32 @@
          * Safely saves the current local state to Firestore.
          */
         async function saveGameState(state) {
-            if (!db || !userId || !state) return;
+            // Only allow save if the current user is the admin (client-side check)
+            // The security rule on the server provides the final enforcement.
+            if (!db || !userId || !state || !GAME_DOC_PATH) {
+                console.error("Cannot save game state: Firebase/Path not initialized.");
+                return;
+            }
+            if (!isAdmin && state.ownerId && state.ownerId !== userId) {
+                 console.warn("Attempted to save state without admin privileges.");
+                 return;
+            }
+
             elements.button.disabled = true;
+            elements.resetButton.disabled = true;
             try {
+                // Using setDoc will trigger a create or an update depending on if the document exists
                 await setDoc(doc(db, GAME_DOC_PATH), state);
                 console.log("Game state saved successfully.");
             } catch (error) {
                 console.error("Error saving game state:", error);
+                // Re-enable button on error if user is admin, so they can try again or see the issue.
+                if (isAdmin) {
+                    elements.button.disabled = false;
+                    elements.resetButton.disabled = false;
+                }
             } finally {
-                // The onSnapshot listener will re-enable the button after the update is processed
+                // The onSnapshot listener will re-enable the buttons if the user is the admin
             }
         }
         
@@ -283,13 +300,23 @@
          * Confirms with the user before resetting the game (since it affects everyone).
          */
         function handleResetConfirmation() {
-            elements.resetModal.classList.remove('hidden');
+            if (isAdmin) {
+                elements.resetModal.classList.remove('hidden');
+            } else {
+                console.warn("Non-admin user attempted to reset game.");
+            }
         }
 
         /**
          * Resets the game state in Firestore.
          */
         async function resetGame() {
+            if (!isAdmin) {
+                console.error("Only the owner can reset the game.");
+                elements.resetModal.classList.add('hidden');
+                return;
+            }
+            
             elements.resetModal.classList.add('hidden');
             elements.messageBox.classList.add('hidden');
             
@@ -299,8 +326,11 @@
                 keptNumbers: [],
                 lastPickedNumber: null,
                 doublePickNumbers: USER_DOUBLE_PICK_NUMBERS,
+                ownerId: userId, // Set the current user as the owner on reset
             };
 
+            // This setDoc call is either creating the document for the first time
+            // or overwriting the existing one (update).
             await saveGameState(initialState);
             console.log('Game has been reset in Firestore.');
             // UI will update automatically via onSnapshot
@@ -312,42 +342,48 @@
          * Applies the received Firestore state to the local game and updates the UI.
          */
         function applyStateToUI(state) {
-            if (!state || Object.keys(state).length === 0) {
-                // This happens when the document is first created/empty. Initialize.
-                // Only the first user to load will trigger the creation of the document.
+            
+            // 1. Handle Initialization/Empty State
+            if (!state || Object.keys(state).length === 0 || !state.ownerId) {
+                // This state happens when the document is first created/empty. Initialize with current user as owner.
                 if (localState.lastPickedNumber === null) {
-                    saveGameState({
-                        pickCounts: {},
-                        fullySelectedNumbers: [],
-                        keptNumbers: [],
-                        lastPickedNumber: null,
-                        doublePickNumbers: USER_DOUBLE_PICK_NUMBERS,
-                    });
+                    // We call resetGame() to initialize the state, which internally calls saveGameState
+                    resetGame(); 
                 }
                 return;
             }
 
+            // 2. Update Local State
             localState = {
                 ...state,
-                // Ensure sets are used locally for fast lookups
                 pickCounts: new Map(Object.entries(state.pickCounts || {})),
                 fullySelectedNumbers: new Set(state.fullySelectedNumbers || []),
                 keptNumbers: new Set(state.keptNumbers || []),
                 doublePickNumbers: new Set(state.doublePickNumbers || []),
             };
             
-            elements.decisionModal.classList.add('hidden');
-            elements.button.disabled = false; // Enable button when state is stable
+            // 3. Determine Admin Status
+            isAdmin = userId === localState.ownerId;
             
-            // Re-render the entire table based on the new state
+            // 4. Update UI Controls based on Admin Status
+            elements.decisionModal.classList.add('hidden');
+            elements.button.disabled = !isAdmin;
+            elements.resetButton.disabled = !isAdmin;
+
+            if (isAdmin) {
+                elements.ownerStatus.textContent = "You are the Game Owner (Admin)";
+                elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-green-100 text-green-700";
+            } else {
+                elements.ownerStatus.textContent = `Viewing Only. Owner ID: ${localState.ownerId}`;
+                elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-yellow-100 text-yellow-700";
+            }
+            
+            // 5. Render Grid and Status
             renderNumberGrid();
             
             const remaining = MAX_NUMBER - localState.fullySelectedNumbers.size;
             elements.count.textContent = remaining;
             
-            // elements.specialInfo.textContent = `(${localState.doublePickNumbers.size} specific numbers require 2 picks)`; 
-            // The line above was removed as requested by the user.
-
             if (localState.lastPickedNumber) {
                 elements.display.textContent = localState.lastPickedNumber;
             } else {
@@ -385,7 +421,7 @@
                 const currentCount = localState.pickCounts.get(i) || 0;
                 
                 // Clear existing visual state classes
-                item.classList.remove('selected', 'selected-once', 'kept', 'hover:bg-gray-200', 'bg-white');
+                item.classList.remove('selected', 'selected-once', 'kept', 'hover:bg-gray-200', 'bg-white', 'pick-animation');
 
                 if (localState.fullySelectedNumbers.has(i)) {
                     // State 2: Fully Removed (Red, crossed out)
@@ -410,6 +446,11 @@
          * Selects a random available number and initiates the decision process.
          */
         async function selectNumber() {
+            if (!isAdmin) {
+                console.warn("Non-admin user attempted to pick a number.");
+                return;
+            }
+            
             elements.button.disabled = true;
 
             const neededPicks = (num) => localState.doublePickNumbers.has(num) ? 2 : 1;
@@ -460,6 +501,9 @@
 
             const numberElement = document.getElementById(`num-${selected}`);
             if (numberElement) {
+                // Remove previous flash before adding a new one
+                numberElement.classList.remove('pick-animation'); 
+                void numberElement.offsetWidth; // Trigger reflow
                 numberElement.classList.add('pick-animation');
                 setTimeout(() => {
                     numberElement.classList.remove('pick-animation');
@@ -483,7 +527,12 @@
          * @param {boolean} [isAutomatic=false] If true, skips hiding the modal (as the modal isn't shown).
          */
         async function handleDecision(selected, action, isAutomatic = false) {
-            
+            if (!isAdmin) {
+                console.error("Only the owner can make a decision.");
+                elements.decisionModal.classList.add('hidden');
+                return;
+            }
+
             // Ensure button is disabled while writing to prevent double-click race condition
             elements.button.disabled = true;
             
@@ -514,13 +563,14 @@
                 }
             }
 
-            // Save the new state to Firestore
+            // Save the new state to Firestore, carrying over the ownerId
             const newState = {
                 pickCounts: newPickCounts,
                 fullySelectedNumbers: newFullySelected,
                 keptNumbers: newKept,
                 lastPickedNumber: selected,
                 doublePickNumbers: USER_DOUBLE_PICK_NUMBERS,
+                ownerId: localState.ownerId, // Preserve the existing owner ID
             };
 
             await saveGameState(newState);
@@ -530,13 +580,36 @@
             if (!isAutomatic) {
                 elements.decisionModal.classList.add('hidden');
             }
-            // Button is re-enabled by onSnapshot
+            // Button is re-enabled by onSnapshot if isAdmin is true
         }
         
         // --- Initialization and Event Listeners ---
         
         async function initializeFirebase() {
+            // 🛑 CRITICAL: YOU MUST REPLACE ALL PLACEHOLDER VALUES BELOW 
+            // with your actual Firebase project configuration credentials
+            // obtained from your Firebase console -> Project Settings.
+            const firebaseConfig = {
+                // 1. YOUR API KEY
+                apiKey: "AIzaSyCf89wtrye4grXf0LY1cKO6GK0XIAqqVuU",
+                // 2. YOUR AUTH DOMAIN (e.g., "my-project-1234.firebaseapp.com")
+                authDomain: "drawdown-ddfdf.firebaseapp.com",
+                // 3. YOUR PROJECT ID (e.g., "my-project-1234")
+                projectId: "drawdown-ddfdf",
+                // 4. YOUR STORAGE BUCKET (e.g., "my-project-1234.appspot.com")
+                storageBucket: "drawdown-ddfdf.firebasestorage.app",
+                // 5. YOUR MESSAGING SENDER ID
+                messagingSenderId: "949823482010",
+                // 6. YOUR APP ID
+                appId: "1:949823482010:web:be78dd021b4c9fa9081723"
+            };
+            
             try {
+                // Check if the user replaced the config placeholders
+                if (firebaseConfig.apiKey.includes('YOUR_ACTUAL') || !firebaseConfig.projectId.includes('.')) {
+                    throw new Error("Missing Firebase Config: Please update the 'firebaseConfig' object inside the initializeFirebase function in the HTML file with your actual Firebase project details.");
+                }
+
                 // Set Firestore log level to debug for better diagnostics
                 setLogLevel('debug');
                 
@@ -544,28 +617,55 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                // Authenticate (use custom token if provided, otherwise sign in anonymously)
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                
-                userId = auth.currentUser?.uid || crypto.randomUUID();
-                elements.userIdDisplay.textContent = userId;
+                // Use the projectId from the config as the unique app identifier
+                const appId = firebaseConfig.projectId;
+                // Define the exact document path used by the security rules
+                GAME_DOC_PATH = `artifacts/${appId}/public/data/ticketGame/gameState`;
 
-                // Start listening for real-time updates
+                // For static hosting like GitHub Pages, we use anonymous sign-in.
+                await signInAnonymously(auth);
+                console.log("Signed in anonymously.");
+                
+                // 3. Start listening for real-time updates now that Auth is complete
                 startRealTimeListener();
+
+                // 4. Update userId based on auth state change
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        userId = user.uid;
+                        elements.userIdDisplay.textContent = userId;
+                        // The onSnapshot listener will handle game state initialization/updates
+                    } else {
+                        // Fallback user ID if authentication somehow fails, though it should be handled by anonymous sign-in
+                        userId = crypto.randomUUID();
+                        elements.userIdDisplay.textContent = userId;
+                    }
+                });
+
 
             } catch (error) {
                 console.error("Firebase Initialization Error:", error);
-                // Updated failure message to be more helpful
-                elements.loadingOverlay.innerHTML = '<div class="text-center"><p class="text-xl text-red-600 font-bold mb-2">Failed to connect to the shared game.</p><p class="text-lg text-red-500">Please open your browser\'s Developer Console (F12 or Cmd+Option+J) to see the detailed error message.</p></div>';
+                // Display error message to user
+                elements.loadingOverlay.innerHTML = `
+                    <div class="text-center p-6 bg-red-100 rounded-xl shadow-lg border border-red-300">
+                        <p class="text-xl text-red-700 font-bold mb-3">Connection Failed</p>
+                        <p class="text-base text-red-600 mb-4">The game could not connect to Firebase.</p>
+                        <p class="text-gray-700 text-sm bg-red-200 p-3 rounded-lg text-left">
+                            <span class="font-extrabold text-indigo-800">ACTION REQUIRED:</span> You need to replace the **placeholder** Firebase configuration in the JavaScript code with your **actual** project configuration to make the app work on GitHub Pages.
+                        </p>
+                        <p class="text-xs mt-3 text-gray-500">Error: ${error.message}</p>
+                    </div>
+                `;
                 elements.appContainer.classList.add('hidden');
             }
         }
         
         function startRealTimeListener() {
+            // Ensure GAME_DOC_PATH is set before proceeding
+            if (!GAME_DOC_PATH) {
+                console.error("Cannot start listener: GAME_DOC_PATH is null.");
+                return;
+            }
             const gameDocRef = doc(db, GAME_DOC_PATH);
 
             onSnapshot(gameDocRef, async (docSnapshot) => {
@@ -579,25 +679,51 @@
                     console.log("Game state updated from network.");
                 } else {
                     // Document doesn't exist yet, create the initial state
-                    console.log("No game state found. Initializing new game.");
-                    await resetGame();
+                    console.log("No game state found. Initializing new game with current user as owner.");
+                    
+                    if (auth.currentUser) {
+                         // The user is authenticated (anonymously), attempt to create the document
+                         await resetGame();
+                    } else {
+                        // User is not authenticated yet, let the auth listener handle it.
+                        console.log("Waiting for user authentication to finalize before creating document.");
+                        
+                        // Fallback check:
+                        if (userId !== 'loading') {
+                            await resetGame();
+                        }
+                    }
                 }
             }, (error) => {
                 console.error("Firestore real-time listener failed:", error);
-                // Show a clear error if the listener fails (often due to security rules)
-                elements.loadingOverlay.innerHTML = '<div class="text-center"><p class="text-xl text-red-600 font-bold mb-2">Real-time connection failed!</p><p class="text-lg text-red-500">Check the console (F12) for security or network errors.</p></div>';
+                // Detailed error for security rules issue
+                elements.loadingOverlay.innerHTML = `
+                    <div class="text-center p-6 bg-red-100 rounded-xl shadow-lg border border-red-300">
+                        <p class="text-xl text-red-700 font-bold mb-3">Permissions Error</p>
+                        <p class="text-base text-red-600 mb-4">Cannot read or write game data.</p>
+                        <p class="text-gray-700 text-sm bg-red-200 p-3 rounded-lg text-left">
+                            <span class="font-extrabold text-indigo-800">ACTION REQUIRED:</span> The app is trying to access the path:
+                            <code class="block font-mono font-bold text-indigo-700 break-words mt-1">${GAME_DOC_PATH}</code>
+                            <br>
+                            To allow public reads and owner-only writes, you **MUST** publish this rule in your Firebase console:
+                            <pre class="bg-gray-800 text-green-300 p-2 rounded-md overflow-x-auto text-xs mt-2">
+match /artifacts/{appId}/public/data/ticketGame/gameState {
+  allow read: true; // <-- Public Read access
+  allow create: if request.auth != null && 
+                   request.resource.data.ownerId == request.auth.uid;
+  allow update, delete: if request.auth != null && 
+                        resource.data.ownerId == request.auth.uid;
+}
+                            </pre>
+                            And confirm the rule has been **published**.
+                        </p>
+                        <p class="text-xs mt-3 text-gray-500">Error: ${error.message}</p>
+                    </div>
+                `;
                 elements.loadingOverlay.classList.remove('hidden');
             });
         }
-        const firebaseConfig = {
-  apiKey: "AIzaSyCf89wtrye4grXf0LY1cKO6GK0XIAqqVuU",
-  authDomain: "drawdown-ddfdf.firebaseapp.com",
-  projectId: "drawdown-ddfdf",
-  storageBucket: "drawdown-ddfdf.firebasestorage.app",
-  messagingSenderId: "949823482010",
-  appId: "1:949823482010:web:be78dd021b4c9fa9081723",
-  measurementId: "G-08WENN5YBW"
-};
+        
         window.onload = function() {
             initializeFirebase();
             
@@ -608,11 +734,13 @@
             
             // Attach listeners for the modal buttons
             if (elements.keepButton) {
+                // Ensure decision functions check isAdmin internally
                 elements.keepButton.addEventListener('click', () => {
                     if (lastPickedNumber !== null) handleDecision(lastPickedNumber, 'keep');
                 });
             }
             if (elements.removeButton) {
+                // Ensure decision functions check isAdmin internally
                 elements.removeButton.addEventListener('click', () => {
                     if (lastPickedNumber !== null) handleDecision(lastPickedNumber, 'remove');
                 });
@@ -620,7 +748,5 @@
         };
 
     </script>
-</body>
-</html>
 </body>
 </html>
