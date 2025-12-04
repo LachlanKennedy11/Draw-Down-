@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Draw-down Ticket Picker (Pick Count Logic)</title>
+    <title>Secure Draw-down Ticket Picker (Permanent Blue Numbers)</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Configure Tailwind -->
@@ -83,14 +83,15 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        /* State 3: Prize Tier (All remaining numbers at a 50-pick milestone) - BLUE */
+        /* State 3: Prize Tier (Permanent Highlight) - BLUE */
         .number-item.prize-tier {
-            background-color: #dbeafe; /* Light Blue */
-            color: #1e40af; /* Darker Blue text */
-            border: 3px solid #3b82f6;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            font-weight: 800;
-            transform: scale(1.02);
+            /* !important ensures this overrides the base available/kept colors */
+            background-color: #60a5fa !important; 
+            color: #fff !important; 
+            border: 3px solid #1d4ed8 !important;
+            box-shadow: 0 4px 10px rgba(29, 78, 216, 0.5) !important;
+            font-weight: 900 !important;
+            transform: scale(1.05) !important;
         }
         
         /* --- Animation for new pick --- */
@@ -159,7 +160,7 @@
                 <h3 class="text-2xl font-bold text-red-600 mb-2">Admin Access Required</h3>
                 <p class="text-sm text-gray-500 mb-6">Log in to enable picking and board resets. (Example: admin@example.com / supersecret)</p>
                 
-                <input type="email" id="admin-email-input" placeholder="Admin Email" value="admin@example.com"
+                <input type="email" id="admin-email-input" placeholder="Admin Email" value="admin@example.example"
                        class="w-full p-3 mb-3 border-2 border-gray-300 rounded-lg text-sm focus:ring-red-500 focus:border-red-500 transition" />
                 
                 <!-- Password Input with Visibility Toggle -->
@@ -219,7 +220,7 @@
             
             <div class="flex items-center space-x-4 ml-auto lg:ml-0">
                 <div class="text-right">
-                    <p class="text-sm opacity-80">Pick # / Total Picks:</p>
+                    <p class="text-sm opacity-80">Pick # / Total Clicks:</p>
                     <p id="pick-count-display" class="text-4xl font-black text-yellow-300 transition-all duration-300">
                         --
                     </p>
@@ -259,7 +260,7 @@
             <div class="text-sm text-gray-500 mb-4">
                 <span class="font-bold text-green-700">Green:</span> Available, decision required. | 
                 <span class="font-bold text-yellow-700">Yellow:</span> Kept, picked again means permanent removal. | 
-                <span class="font-bold text-blue-700">Blue:</span> **Prize Tier - $100 Winner Tier!** (Still in the running, triggered every 50 picks). | 
+                <span class="font-bold text-blue-700">Blue:</span> **$100 Prize Tier Winner!** (Permanent highlight, still in the running). | 
                 <span class="font-bold text-red-700">Red:</span> Permanently removed (cannot be picked again).
             </div>
             <div id="number-table" class="number-grid bg-gray-100 p-2 rounded-lg border border-gray-200">
@@ -348,13 +349,15 @@
 
         // --- GAME CONSTANTS & STATE ---
         const MAX_NUMBER = 500;
+        const MILESTONE_INTERVAL = 50; // Constant for the permanent prize tier interval
         
         let localState = {
             fullySelectedNumbers: new Set(), // Numbers that are permanently removed (Red)
             keptNumbers: new Set(), // Numbers that are temporarily saved (Yellow)
+            prizeTierWinners: new Set(), // NEW: Numbers that are permanently marked blue
             lastPickedNumber: null,
             ownerId: null, // ID of the user who is the admin
-            pickCount: 0, // ADDED: Total times "Pick Next Number" has been clicked
+            pickCount: 0, // Total times "Pick Next Number" has been clicked
         };
 
         let lastPickedNumber = null; // Holds the number while modal is open
@@ -365,7 +368,7 @@
             loadingOverlay: document.getElementById('loading-overlay'),
             loadingStatus: document.getElementById('loading-status'),
             table: document.getElementById('number-table'),
-            pickCountDisplay: document.getElementById('pick-count-display'), // UPDATED ID
+            pickCountDisplay: document.getElementById('pick-count-display'),
             button: document.getElementById('select-button'),
             count: document.getElementById('available-count'),
             messageBox: document.getElementById('message-box'),
@@ -523,7 +526,7 @@
                 isAdmin = false;
                 elements.appContainer.classList.add('hidden');
                 elements.loadingOverlay.classList.add('hidden');
-                localState = { fullySelectedNumbers: new Set(), keptNumbers: new Set(), lastPickedNumber: null, ownerId: null, pickCount: 0 };
+                localState = { fullySelectedNumbers: new Set(), keptNumbers: new Set(), prizeTierWinners: new Set(), lastPickedNumber: null, ownerId: null, pickCount: 0 };
 
                 showInitialChoiceModal();
 
@@ -583,6 +586,7 @@
                     ...state,
                     fullySelectedNumbers: Array.from(state.fullySelectedNumbers),
                     keptNumbers: Array.from(state.keptNumbers),
+                    prizeTierWinners: Array.from(state.prizeTierWinners), // NEW: Convert Set to Array
                 };
                 await setDoc(doc(db, GAME_DOC_PATH), stateToSave);
                 console.log(`Full game state saved successfully. (Creation: ${isCreation})`);
@@ -638,6 +642,7 @@
             const initialState = {
                 fullySelectedNumbers: new Set(),
                 keptNumbers: new Set(),
+                prizeTierWinners: new Set(), // NEW: Initialize new Set
                 lastPickedNumber: null,
                 ownerId: userId, // Set the current LOGGED-IN user as the owner
                 pickCount: 0, // Reset pick count
@@ -671,7 +676,10 @@
                 ...state,
                 fullySelectedNumbers: new Set(state.fullySelectedNumbers || []),
                 keptNumbers: new Set(state.keptNumbers || []),
-                pickCount: state.pickCount || 0, // Get the new pick count
+                prizeTierWinners: new Set(state.prizeTierWinners || []), // NEW: Initialize Set
+                pickCount: state.pickCount || 0, 
+                // Ensure lastPickedNumber is a number or null
+                lastPickedNumber: typeof state.lastPickedNumber === 'number' ? state.lastPickedNumber : null
             };
             
             const user = auth.currentUser;
@@ -722,31 +730,30 @@
                 }
             }
 
-            // Milestone hit if pick count is a multiple of 50 and greater than 0
-            const pickCount = localState.pickCount || 0;
-            const isMilestoneHit = pickCount > 0 && pickCount % 50 === 0;
-
             // Apply styles based on current state
             for (let i = 1; i <= MAX_NUMBER; i++) {
                 const item = document.getElementById(`num-${i}`);
                 if (!item) continue;
                 
-                item.className = 'number-item rounded-md'; // Reset classes
+                // 1. Reset classes
+                item.className = 'number-item rounded-md'; 
 
+                // 2. Apply Base State (Red, Yellow, or Green)
                 if (localState.fullySelectedNumbers.has(i)) {
-                    item.classList.add('selected'); // 1. Red (Permanently Removed)
+                    item.classList.add('selected'); // Red (Permanently Removed)
+                } else if (localState.keptNumbers.has(i)) {
+                    item.classList.add('kept'); // Yellow (Kept)
                 } else {
-                    // Number is STILL in play (Green, Yellow, or Blue)
-                    
-                    if (isMilestoneHit) {
-                        // 2. Blue (Prize Tier) - Overrides Green/Yellow styles visually
-                        item.classList.add('prize-tier'); 
-                    } else if (localState.keptNumbers.has(i)) {
-                        // 3. Yellow (Kept)
-                        item.classList.add('kept');
-                    } else {
-                        // 4. Green (Available)
-                        item.classList.add('available'); 
+                    item.classList.add('available'); // Green (Available)
+                }
+                
+                // 3. Apply Blue Prize Tier Highlight (Permanent override if not removed)
+                if (localState.prizeTierWinners.has(i)) {
+                    // Blue overrides everything UNLESS the number has been permanently removed (Red)
+                    if (!localState.fullySelectedNumbers.has(i)) {
+                         // Clear existing state colors (kept/available) and apply blue
+                         item.classList.remove('kept', 'available'); 
+                         item.classList.add('prize-tier');
                     }
                 }
             }
@@ -779,22 +786,35 @@
             
             flashNumber(selected);
 
-            // Increment pick count for this action
+            // 1. Increment pick count for this action
             const newPickCount = localState.pickCount + 1;
             lastPickedNumber = selected; // Store for the modal/decision handler
+            
+            // 2. Check for Milestone and update Prize Winners
+            const isMilestonePick = newPickCount > 0 && newPickCount % MILESTONE_INTERVAL === 0;
+            const newPrizeTierWinners = new Set(localState.prizeTierWinners); 
 
-            // Check if the picked number is already Kept (Yellow)
+            if (isMilestonePick) {
+                // The picked number becomes a permanent Blue Prize Winner
+                newPrizeTierWinners.add(selected);
+                console.log(`Milestone reached! Number ${selected} is a permanent Blue Prize Tier Winner.`);
+            }
+
+            // 3. Check for automatic removal (Yellow -> Red)
             if (localState.keptNumbers.has(selected)) {
                 // RULE: Yellow numbers, when picked, automatically turn Red.
                 console.log(`Number ${selected} was Kept (Yellow), automatically removing it.`);
-                // If automatic removal, call handleDecision which saves the full state change including pickCount
-                await handleDecision(selected, 'remove', newPickCount); 
+                
+                // If automatic removal, call handleDecision which saves the full state change including pickCount/Prize Winners
+                await handleDecision(selected, 'remove', newPickCount, newPrizeTierWinners); 
             } else {
-                // The number is Available (Green/Blue). Require Admin decision.
-                // First, save the incremented pick count and the last picked number to update the board UI immediately
+                // 4. The number is Available (Green/Blue). Require Admin decision.
+                
+                // Save the incremented pick count, last picked number, AND the updated prize winners list
                 await saveStateUpdate({
                     pickCount: newPickCount,
-                    lastPickedNumber: selected
+                    lastPickedNumber: selected,
+                    prizeTierWinners: Array.from(newPrizeTierWinners)
                 });
                 
                 // Then, show the modal for the decision
@@ -805,9 +825,10 @@
         
         function flashNumber(selected) {
             const pickDisplay = elements.pickCountDisplay;
-            // Only update the number part of the display for the flash effect
-            const currentText = pickDisplay.textContent;
-            pickDisplay.textContent = `${selected} / ${localState.pickCount}`;
+            
+            // Update the display to show the newly picked number and the new total count
+            const newPickCount = localState.pickCount + 1; 
+            pickDisplay.textContent = `${selected} / ${newPickCount}`;
 
             pickDisplay.classList.remove('text-yellow-300');
             pickDisplay.classList.add('text-red-300'); // Changed flash color for contrast
@@ -829,7 +850,7 @@
             elements.decisionModal.classList.remove('hidden');
         }
 
-        async function handleDecision(selected, action, autoPickCount = null) {
+        async function handleDecision(selected, action, autoPickCount = null, autoPrizeWinners = null) {
             if (!isAdmin) return;
 
             elements.button.disabled = true;
@@ -851,14 +872,19 @@
                 newFullySelected.add(selected);
             }
             
+            // Determine the pick count and prize winners to save. 
+            // If auto* are provided (Yellow-to-Red), use them.
+            // Otherwise, use the current pick count from state, as it was already updated in selectNumber
+            const finalPickCount = autoPickCount !== null ? autoPickCount : localState.pickCount;
+            const finalPrizeWinners = autoPrizeWinners !== null ? autoPrizeWinners : localState.prizeTierWinners;
+
             // Prepare update payload
             const updatePayload = {
                 fullySelectedNumbers: Array.from(newFullySelected),
                 keptNumbers: Array.from(newKept),
+                prizeTierWinners: Array.from(finalPrizeWinners), // Use the determined set
                 lastPickedNumber: selected,
-                // Only update pickCount if this was an automatic removal where selectNumber provided the new count.
-                // Otherwise (manual decision), the pickCount was already updated by selectNumber's saveStateUpdate.
-                ...(autoPickCount !== null && { pickCount: autoPickCount }) 
+                pickCount: finalPickCount, 
             };
 
             try {
