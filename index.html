@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Draw-down Ticket Picker (Rules Updated)</title>
+    <title>Secure Draw-down Ticket Picker (Pick Count Logic)</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Configure Tailwind -->
@@ -81,6 +81,16 @@
             font-weight: 800;
             text-decoration: none;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* State 3: Prize Tier (All remaining numbers at a 50-pick milestone) - BLUE */
+        .number-item.prize-tier {
+            background-color: #dbeafe; /* Light Blue */
+            color: #1e40af; /* Darker Blue text */
+            border: 3px solid #3b82f6;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            font-weight: 800;
+            transform: scale(1.02);
         }
         
         /* --- Animation for new pick --- */
@@ -209,8 +219,8 @@
             
             <div class="flex items-center space-x-4 ml-auto lg:ml-0">
                 <div class="text-right">
-                    <p class="text-sm opacity-80">Last Pick:</p>
-                    <p id="selected-display" class="text-4xl font-black text-yellow-300 transition-all duration-300">
+                    <p class="text-sm opacity-80">Pick # / Total Picks:</p>
+                    <p id="pick-count-display" class="text-4xl font-black text-yellow-300 transition-all duration-300">
                         --
                     </p>
                 </div>
@@ -222,7 +232,7 @@
             </div>
         </header>
 
-        <!-- Status and Reset -->
+        <!-- Status and Pick Count -->
         <div class="p-6 border-b border-gray-100 flex flex-col lg:flex-row justify-between items-start lg:items-center space-y-3 lg:space-y-0 text-sm">
             <div class="flex items-center space-x-4">
                 <p id="owner-status" class="font-semibold text-center py-1 px-3 rounded-full"></p>
@@ -249,6 +259,7 @@
             <div class="text-sm text-gray-500 mb-4">
                 <span class="font-bold text-green-700">Green:</span> Available, decision required. | 
                 <span class="font-bold text-yellow-700">Yellow:</span> Kept, picked again means permanent removal. | 
+                <span class="font-bold text-blue-700">Blue:</span> **Prize Tier - $100 Winner Tier!** (Still in the running, triggered every 50 picks). | 
                 <span class="font-bold text-red-700">Red:</span> Permanently removed (cannot be picked again).
             </div>
             <div id="number-table" class="number-grid bg-gray-100 p-2 rounded-lg border border-gray-200">
@@ -339,10 +350,11 @@
         const MAX_NUMBER = 500;
         
         let localState = {
-            fullySelectedNumbers: [], // Numbers that are permanently removed (Red)
-            keptNumbers: [], // Numbers that are temporarily saved (Yellow)
+            fullySelectedNumbers: new Set(), // Numbers that are permanently removed (Red)
+            keptNumbers: new Set(), // Numbers that are temporarily saved (Yellow)
             lastPickedNumber: null,
             ownerId: null, // ID of the user who is the admin
+            pickCount: 0, // ADDED: Total times "Pick Next Number" has been clicked
         };
 
         let lastPickedNumber = null; // Holds the number while modal is open
@@ -353,7 +365,7 @@
             loadingOverlay: document.getElementById('loading-overlay'),
             loadingStatus: document.getElementById('loading-status'),
             table: document.getElementById('number-table'),
-            display: document.getElementById('selected-display'),
+            pickCountDisplay: document.getElementById('pick-count-display'), // UPDATED ID
             button: document.getElementById('select-button'),
             count: document.getElementById('available-count'),
             messageBox: document.getElementById('message-box'),
@@ -366,7 +378,7 @@
             resetModal: document.getElementById('reset-modal'),
             ownerStatus: document.getElementById('owner-status'), 
             
-            // Auth Elements - NOW CORRECTLY MAPPED TO HTML ELEMENTS
+            // Auth Elements
             initialChoiceModal: document.getElementById('initial-choice-modal'), 
             adminAuthModal: document.getElementById('admin-auth-modal'),
             authState: document.getElementById('auth-state'),
@@ -412,7 +424,6 @@
                 startRealTimeListener(); // Start the viewer's listener
             } catch (error) {
                 console.error("View Board (Anonymous Sign-in) Failed:", error);
-                // Note: Using a custom modal/message box instead of alert() is preferred
                 const status = document.getElementById('loading-status');
                 status.textContent = `Error connecting as viewer: ${error.message}`;
                 setTimeout(() => {
@@ -467,18 +478,14 @@
             elements.loadingOverlay.classList.remove('hidden');
 
             try {
-                // Ensure we are signed out of any previous sessions (like anonymous)
                 await signOut(auth).catch(e => console.warn("SignOut failed before admin sign-in, proceeding.", e));
-
                 const result = await signInWithEmailAndPassword(auth, email, password);
                 
-                // Login successful, set user ID and start listener
                 userId = result.user.uid;
                 updateAuthStateUI(result.user);
                 startRealTimeListener();
 
             } catch (error) {
-                // Handle the error (including auth/invalid-credential)
                 console.error("Login Error:", error.code, error.message);
                 
                 let errorMessage = "Login Failed: An unknown error occurred.";
@@ -495,7 +502,7 @@
                 elements.authError.classList.remove('hidden');
                 elements.adminLoginButton.disabled = false;
                 elements.loadingOverlay.classList.add('hidden');
-                showAdminLoginModal(); // Show modal again with error
+                showAdminLoginModal(); 
             }
         }
         window.handleAdminLogin = handleAdminLogin;
@@ -505,21 +512,19 @@
          */
         async function handleAdminLogout() {
             try {
-                // Stop the current listener
                 if (unsubscribeFromSnapshot) {
                     unsubscribeFromSnapshot();
                     unsubscribeFromSnapshot = null;
                 }
                 
                 await signOut(auth);
-                // Reset state and UI
+                
                 userId = null;
                 isAdmin = false;
                 elements.appContainer.classList.add('hidden');
                 elements.loadingOverlay.classList.add('hidden');
-                localState = { fullySelectedNumbers: [], keptNumbers: [], lastPickedNumber: null, ownerId: null };
+                localState = { fullySelectedNumbers: new Set(), keptNumbers: new Set(), lastPickedNumber: null, ownerId: null, pickCount: 0 };
 
-                // Go back to the initial choice screen
                 showInitialChoiceModal();
 
             } catch (error) {
@@ -530,41 +535,32 @@
 
         /**
          * Updates the UI based on the current user's authentication status.
-         * @param {object | null} user - The authenticated Firebase User object or null.
          */
         function updateAuthStateUI(user) {
-            // This function is now only called after a choice is made (View or Admin Login)
             if (user && !user.isAnonymous) {
-                // Logged-in admin
                 elements.userIdDisplay.textContent = user.uid;
                 elements.authState.textContent = `Admin (${user.email || 'UID'})`;
-                // Set classes directly to avoid null errors from classList manipulation on null element
                 elements.authState.className = 'font-bold text-green-700'; 
                 elements.adminLogoutButton.classList.remove('hidden');
             } else if (user && user.isAnonymous) {
-                // Anonymous viewer
                 elements.userIdDisplay.textContent = user.uid;
                 elements.authState.textContent = 'Viewer (Anonymous)';
-                // Set classes directly
                 elements.authState.className = 'font-bold text-yellow-700';
                 elements.adminLogoutButton.classList.add('hidden');
             } else {
-                // Should not happen after initial choice, but safety fallback
                 elements.authState.textContent = 'Unauthenticated';
                 elements.adminLogoutButton.classList.add('hidden');
             }
         }
 
-        // --- UTILITY FUNCTIONS ---
+        // --- FIRESTORE UTILITY FUNCTIONS ---
 
         /**
-         * Safely saves the current local state to Firestore.
-         * @param {object} state - The game state to save.
-         * @param {boolean} isCreation - Flag indicating if this is the initial document creation.
+         * Safely saves the *full* game state to Firestore (used for creation/reset).
          */
-        async function saveGameState(state, isCreation = false) {
+        async function saveFullState(state, isCreation = false) {
             if (!db || !userId || !state) {
-                console.error("Cannot save game state: Firebase/User not initialized.");
+                console.error("Cannot save full game state: Firebase/User not initialized.");
                 throw new Error("Initialization or Path Error.");
             }
             
@@ -572,36 +568,53 @@
             const isLoggedInAdmin = auth.currentUser && !auth.currentUser.isAnonymous;
             
             // Security Check
-            if (isCreation) {
-                // CREATION: Must be a logged-in admin setting themselves as the owner
+            if (isCreation || !isLoggedInAdmin || !isOwnerMatch) {
                 if (!isLoggedInAdmin || !isOwnerMatch) {
-                    console.error("Creation Failed: Must be a logged-in admin user setting themselves as the owner.");
-                    throw new Error("Creation Denied: Must be logged in as an admin to create a board.");
-                }
-            } else {
-                // UPDATE/RESET: Must already be recognized as the admin by the current board state
-                if (!isAdmin || !isOwnerMatch) {
-                     console.warn("Permission Denied: Attempted to save state without admin privileges or owner ID mismatch.");
-                     throw new Error("Permission Denied: Only the logged-in game owner can modify the state.");
+                    console.error("Creation/Full State Save Failed: Must be a logged-in admin user setting themselves as the owner.");
+                    throw new Error("Creation Denied: Must be logged in as an admin to create/reset a board.");
                 }
             }
 
             elements.button.disabled = true;
             elements.resetButton.disabled = true;
             try {
-                await setDoc(doc(db, GAME_DOC_PATH), state);
-                console.log(`Game state saved successfully. (Creation: ${isCreation})`);
+                // Ensure Sets are converted back to Arrays for storage
+                const stateToSave = {
+                    ...state,
+                    fullySelectedNumbers: Array.from(state.fullySelectedNumbers),
+                    keptNumbers: Array.from(state.keptNumbers),
+                };
+                await setDoc(doc(db, GAME_DOC_PATH), stateToSave);
+                console.log(`Full game state saved successfully. (Creation: ${isCreation})`);
             } catch (error) {
-                console.error("Error saving game state:", error);
+                console.error("Error saving full game state:", error);
                 throw error; 
             }
+        }
+
+        /**
+         * Safely merges an update payload into the existing Firestore document.
+         */
+        async function saveStateUpdate(updatePayload) {
+             if (!db || !isAdmin) {
+                 console.error("Cannot save state update: Admin/DB not ready.");
+                 throw new Error("Permission Denied.");
+             }
+             elements.button.disabled = true;
+             try {
+                 // Use setDoc with { merge: true }
+                 await setDoc(doc(db, GAME_DOC_PATH), updatePayload, { merge: true });
+                 console.log("State update merged successfully.");
+             } catch (error) {
+                 console.error("Error saving game state update:", error);
+                 throw error; 
+             }
         }
         
         function handleResetConfirmation() {
             if (isAdmin) {
                 elements.resetModal.classList.remove('hidden');
             } else {
-                // If a non-admin tries to click, show the login modal
                 elements.adminAuthModal.classList.remove('hidden');
                 console.warn("Non-admin user attempted to reset game, prompting login.");
             }
@@ -613,7 +626,6 @@
          * @param {boolean} isCreation - True if this is the very first time initializing the document.
          */
         async function resetGame(isCreation = false) {
-            // Check auth status again before executing the write
             if (!userId || (!isAdmin && !isCreation)) {
                 console.warn("Cannot reset game: Admin role or prerequisites missing.");
                 elements.resetModal.classList.add('hidden');
@@ -624,25 +636,22 @@
             elements.messageBox.classList.add('hidden');
             
             const initialState = {
-                fullySelectedNumbers: [],
-                keptNumbers: [],
+                fullySelectedNumbers: new Set(),
+                keptNumbers: new Set(),
                 lastPickedNumber: null,
                 ownerId: userId, // Set the current LOGGED-IN user as the owner
+                pickCount: 0, // Reset pick count
             };
 
             try {
-                // Pass the creation flag to saveGameState
-                await saveGameState(initialState, isCreation); 
+                await saveFullState(initialState, isCreation); 
                 console.log('Game has been reset/created in Firestore.');
             } catch (error) {
                 console.error("Reset attempt failed:", error);
-                // Handle creation/reset failure gracefully
                 elements.loadingOverlay.classList.add('hidden');
                 elements.appContainer.classList.remove('hidden');
-                // Note: Using custom modal/message box instead of alert()
                 const errorMessage = `Operation Failed! Check Firebase Security Rules. Error: ${error.message}`;
                 console.error(errorMessage);
-                // Simple display fallback:
                 elements.ownerStatus.textContent = "Error during Reset/Creation!";
                 elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-red-100 text-red-700";
             }
@@ -653,26 +662,24 @@
         
         function applyStateToUI(state) {
             
-            // 1. Handle Initialization/Empty State
             if (!state || Object.keys(state).length === 0 || !state.ownerId) {
                 return; 
             }
 
-            // 2. Update Local State & Admin Status
+            // 1. Update Local State & Admin Status
             localState = {
                 ...state,
                 fullySelectedNumbers: new Set(state.fullySelectedNumbers || []),
                 keptNumbers: new Set(state.keptNumbers || []),
+                pickCount: state.pickCount || 0, // Get the new pick count
             };
             
-            // **ADMIN CHECK: Must be authenticated (non-anonymous) AND ownerId must match current userId**
             const user = auth.currentUser;
             isAdmin = (user && !user.isAnonymous) && (userId === localState.ownerId);
             
-            // 3. Update UI Controls based on Admin Status
+            // 2. Update UI Controls based on Admin Status
             elements.decisionModal.classList.add('hidden');
             
-            // Control buttons are only active for the admin
             elements.button.disabled = !isAdmin;
             elements.resetButton.disabled = !isAdmin;
 
@@ -685,14 +692,15 @@
                 elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-yellow-100 text-yellow-700";
             }
             
-            // 4. Render Grid and Status
+            // 3. Render Grid and Status
             renderNumberGrid();
             
             const removedCount = localState.fullySelectedNumbers.size;
             const remaining = MAX_NUMBER - removedCount;
             elements.count.textContent = remaining;
             
-            elements.display.textContent = localState.lastPickedNumber || '--';
+            // Update Pick Count Display
+            elements.pickCountDisplay.textContent = `${localState.lastPickedNumber || '--'} / ${localState.pickCount}`;
             
             if (remaining === 0) {
                 elements.messageBox.classList.remove('hidden');
@@ -714,6 +722,10 @@
                 }
             }
 
+            // Milestone hit if pick count is a multiple of 50 and greater than 0
+            const pickCount = localState.pickCount || 0;
+            const isMilestoneHit = pickCount > 0 && pickCount % 50 === 0;
+
             // Apply styles based on current state
             for (let i = 1; i <= MAX_NUMBER; i++) {
                 const item = document.getElementById(`num-${i}`);
@@ -722,11 +734,20 @@
                 item.className = 'number-item rounded-md'; // Reset classes
 
                 if (localState.fullySelectedNumbers.has(i)) {
-                    item.classList.add('selected'); // Red
-                } else if (localState.keptNumbers.has(i)) {
-                    item.classList.add('kept'); // Yellow
+                    item.classList.add('selected'); // 1. Red (Permanently Removed)
                 } else {
-                    item.classList.add('available'); // Green
+                    // Number is STILL in play (Green, Yellow, or Blue)
+                    
+                    if (isMilestoneHit) {
+                        // 2. Blue (Prize Tier) - Overrides Green/Yellow styles visually
+                        item.classList.add('prize-tier'); 
+                    } else if (localState.keptNumbers.has(i)) {
+                        // 3. Yellow (Kept)
+                        item.classList.add('kept');
+                    } else {
+                        // 4. Green (Available)
+                        item.classList.add('available'); 
+                    }
                 }
             }
         }
@@ -743,7 +764,6 @@
             elements.button.disabled = true; 
             
             // Filter: ONLY include numbers NOT in fullySelectedNumbers (Red numbers excluded).
-            // This gives equal probability to all Available (Green) and Kept (Yellow) numbers.
             const availablePicks = Array.from({ length: MAX_NUMBER }, (_, i) => i + 1).filter(num => {
                 return !localState.fullySelectedNumbers.has(num);
             });
@@ -759,25 +779,41 @@
             
             flashNumber(selected);
 
+            // Increment pick count for this action
+            const newPickCount = localState.pickCount + 1;
+            lastPickedNumber = selected; // Store for the modal/decision handler
+
             // Check if the picked number is already Kept (Yellow)
             if (localState.keptNumbers.has(selected)) {
                 // RULE: Yellow numbers, when picked, automatically turn Red.
                 console.log(`Number ${selected} was Kept (Yellow), automatically removing it.`);
-                await handleDecision(selected, 'remove', true); 
+                // If automatic removal, call handleDecision which saves the full state change including pickCount
+                await handleDecision(selected, 'remove', newPickCount); 
             } else {
-                // The number is Available (Green). Require Admin decision.
-                lastPickedNumber = selected;
+                // The number is Available (Green/Blue). Require Admin decision.
+                // First, save the incremented pick count and the last picked number to update the board UI immediately
+                await saveStateUpdate({
+                    pickCount: newPickCount,
+                    lastPickedNumber: selected
+                });
+                
+                // Then, show the modal for the decision
                 showDecisionModal(selected);
             }
         }
+        window.selectNumber = selectNumber;
         
         function flashNumber(selected) {
-            elements.display.textContent = selected;
-            elements.display.classList.remove('text-yellow-300');
-            elements.display.classList.add('text-red-300'); // Changed flash color for contrast
+            const pickDisplay = elements.pickCountDisplay;
+            // Only update the number part of the display for the flash effect
+            const currentText = pickDisplay.textContent;
+            pickDisplay.textContent = `${selected} / ${localState.pickCount}`;
+
+            pickDisplay.classList.remove('text-yellow-300');
+            pickDisplay.classList.add('text-red-300'); // Changed flash color for contrast
             setTimeout(() => {
-                elements.display.classList.remove('text-red-300');
-                elements.display.classList.add('text-yellow-300');
+                pickDisplay.classList.remove('text-red-300');
+                pickDisplay.classList.add('text-yellow-300');
             }, 300);
 
             const numberElement = document.getElementById(`num-${selected}`);
@@ -793,53 +829,58 @@
             elements.decisionModal.classList.remove('hidden');
         }
 
-        async function handleDecision(selected, action, isAutomatic = false) {
-            if (!isAdmin) return; // Should be handled by selectNumber, but safety check here.
+        async function handleDecision(selected, action, autoPickCount = null) {
+            if (!isAdmin) return;
 
             elements.button.disabled = true;
             
-            // Convert Sets to mutable Arrays for manipulation
-            const newFullySelected = Array.from(localState.fullySelectedNumbers);
-            const newKept = Array.from(localState.keptNumbers);
+            // Start with the current state's Sets
+            const newFullySelected = new Set(localState.fullySelectedNumbers);
+            const newKept = new Set(localState.keptNumbers);
             
             if (action === 'keep') {
-                // Green -> Yellow (Keep)
-                // Add to Kept list if not already there
-                if (!newKept.includes(selected)) {
-                    newKept.push(selected);
-                }
+                // Green/Blue -> Yellow (Keep)
+                newKept.add(selected);
             } else if (action === 'remove') {
-                // Yellow -> Red (Automatic) OR Green -> Red (Manual)
+                // Yellow -> Red (Automatic) OR Green/Blue -> Red (Manual)
 
-                // 1. Ensure it is removed from Kept list
-                const keptIndex = newKept.indexOf(selected);
-                if (keptIndex > -1) {
-                    newKept.splice(keptIndex, 1);
-                }
+                // 1. Remove from Kept list if it was there
+                newKept.delete(selected);
                 
                 // 2. Add to Fully Selected (Red) list
-                if (!newFullySelected.includes(selected)) {
-                    newFullySelected.push(selected);
-                }
+                newFullySelected.add(selected);
             }
             
-            const newState = {
-                fullySelectedNumbers: newFullySelected,
-                keptNumbers: newKept,
+            // Prepare update payload
+            const updatePayload = {
+                fullySelectedNumbers: Array.from(newFullySelected),
+                keptNumbers: Array.from(newKept),
                 lastPickedNumber: selected,
-                ownerId: localState.ownerId, 
+                // Only update pickCount if this was an automatic removal where selectNumber provided the new count.
+                // Otherwise (manual decision), the pickCount was already updated by selectNumber's saveStateUpdate.
+                ...(autoPickCount !== null && { pickCount: autoPickCount }) 
             };
 
             try {
-                 await saveGameState(newState);
+                 await saveStateUpdate(updatePayload);
             } catch (error) {
                  console.error("Failed to apply decision to Firestore:", error);
             }
 
             lastPickedNumber = null;
-            if (!isAutomatic) {
-                elements.decisionModal.classList.add('hidden');
-            }
+            elements.decisionModal.classList.add('hidden');
+        }
+        
+        // Add event listeners for the decision buttons
+        if (elements.keepButton) {
+            elements.keepButton.addEventListener('click', () => {
+                if (lastPickedNumber !== null) handleDecision(lastPickedNumber, 'keep');
+            });
+        }
+        if (elements.removeButton) {
+            elements.removeButton.addEventListener('click', () => {
+                if (lastPickedNumber !== null) handleDecision(lastPickedNumber, 'remove');
+            });
         }
         
         // --- Initialization and Event Listeners ---
@@ -850,10 +891,8 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                // IMPORTANT: Enable debug logging for Firestore to see permission errors
                 setLogLevel('debug'); 
                 
-                // After initial setup, hide loading and show the choice modal
                 elements.loadingOverlay.classList.add('hidden');
                 showInitialChoiceModal();
 
@@ -885,25 +924,20 @@
                     applyStateToUI(remoteState);
                     console.log("Game state updated from network.");
                 } else {
-                    // Document does NOT exist (must be created by an authenticated admin)
                     elements.loadingStatus.textContent = "Board not found. Checking admin status for creation...";
                     
                     if (auth.currentUser && !auth.currentUser.isAnonymous) {
-                         // Admin is logged in, attempt to create the board
                         try {
-                            // Creation path: The user is logged in, and we attempt to create it.
                             await resetGame(true); 
                             console.log("Initial board creation attempt successful.");
                         } catch (e) {
                              console.error("Initial Game Creation Failed:", e.message);
-                             // Display the failure
                              const errorMessage = `Board Not Found: Failed to create the initial board document. Ensure the user is an authenticated admin. Error: ${e.message}`;
                              console.error(errorMessage);
                              elements.ownerStatus.textContent = "Error: Failed to create board!";
                              elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-red-100 text-red-700";
                         }
                     } else {
-                        // Viewer mode, board does not exist
                         console.warn("Board does not exist. Viewer cannot create it. Waiting for Admin.");
                         elements.ownerStatus.textContent = "Board Empty/Uninitialized. Waiting for Admin...";
                         elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-red-100 text-red-700";
@@ -931,17 +965,6 @@
             // 2. Set up event listeners for main actions
             if (elements.button) {
                 elements.button.addEventListener('click', selectNumber);
-            }
-            
-            if (elements.keepButton) {
-                elements.keepButton.addEventListener('click', () => {
-                    if (lastPickedNumber !== null) handleDecision(lastPickedNumber, 'keep');
-                });
-            }
-            if (elements.removeButton) {
-                elements.removeButton.addEventListener('click', () => {
-                    if (lastPickedNumber !== null) handleDecision(lastPickedNumber, 'remove');
-                });
             }
         };
 
