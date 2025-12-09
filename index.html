@@ -172,7 +172,7 @@
                             aria-label="Toggle password visibility">
                         <!-- Eye Icon (lucide-react 'eye-off' by default) -->
                         <svg id="password-toggle-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.44-1.6"/><line x1="2" y1="2" x2="22" y2="22"/>
+                            <path d="M9.88 9.88a3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.44-1.6"/><line x1="2" y1="2" x2="22" y2="22"/>
                         </svg>
                     </button>
                 </div>
@@ -218,18 +218,29 @@
                 </div>
             </div>
             
-            <div class="flex items-center space-x-4 ml-auto lg:ml-0">
+            <div class="flex flex-col space-y-3 lg:flex-row lg:space-y-0 lg:space-x-4">
+                <!-- Pick Count Display -->
                 <div class="text-right">
                     <p class="text-sm opacity-80">Pick # / Total Clicks:</p>
                     <p id="pick-count-display" class="text-4xl font-black text-yellow-300 transition-all duration-300">
                         --
                     </p>
                 </div>
-                <!-- Updated button color to white/black -->
-                <button id="select-button" 
-                        class="px-6 py-3 bg-white hover:bg-gray-200 text-black font-bold rounded-xl shadow-lg transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-red-900">
-                    Pick Next Number
-                </button>
+
+                <!-- Control Buttons -->
+                <div class="flex flex-row space-x-3">
+                    <button id="undo-button" 
+                            class="px-3 py-3 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-xl shadow-lg transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-red-900"
+                            title="Undo Last Pick Cycle (Reverts board state and Pick #). The next pick will be the same number.">
+                        <!-- Undo Icon -->
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6.19 2.51L3 13"/></svg>
+                    </button>
+
+                    <button id="select-button" 
+                            class="px-6 py-3 bg-white hover:bg-gray-200 text-black font-bold rounded-xl shadow-lg transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-red-900 flex-grow">
+                        Pick Next Number
+                    </button>
+                </div>
             </div>
         </header>
 
@@ -358,9 +369,11 @@
             lastPickedNumber: null,
             ownerId: null, // ID of the user who is the admin
             pickCount: 0, // Total times "Pick Next Number" has been clicked
+            stateHistory: [], // Store a history of past states for the undo function
         };
-
+        
         let lastPickedNumber = null; // Holds the number while modal is open
+        let lastUndoneNumber = null; // *** NEW: Holds the number to be re-picked after an undo ***
 
         // --- DOM Elements ---
         const elements = {
@@ -370,6 +383,7 @@
             table: document.getElementById('number-table'),
             pickCountDisplay: document.getElementById('pick-count-display'),
             button: document.getElementById('select-button'),
+            undoButton: document.getElementById('undo-button'), 
             count: document.getElementById('available-count'),
             messageBox: document.getElementById('message-box'),
             resetButton: document.getElementById('reset-button'),
@@ -453,7 +467,7 @@
             } else {
                 passwordInput.type = "password";
                 // Change icon to 'eye-off' (hidden)
-                icon.innerHTML = '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.44-1.6"/><line x1="2" y1="2" x2="22" y2="22"/>';
+                icon.innerHTML = '<path d="M9.88 9.88a3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.44-1.6"/><line x1="2" y1="2" x2="22" y2="22"/>';
             }
         }
         window.togglePasswordVisibility = togglePasswordVisibility;
@@ -524,9 +538,10 @@
                 
                 userId = null;
                 isAdmin = false;
+                lastUndoneNumber = null; // Clear queue on logout
                 elements.appContainer.classList.add('hidden');
                 elements.loadingOverlay.classList.add('hidden');
-                localState = { fullySelectedNumbers: new Set(), keptNumbers: new Set(), prizeTierWinners: new Set(), lastPickedNumber: null, ownerId: null, pickCount: 0 };
+                localState = { fullySelectedNumbers: new Set(), keptNumbers: new Set(), prizeTierWinners: new Set(), lastPickedNumber: null, ownerId: null, pickCount: 0, stateHistory: [] };
 
                 showInitialChoiceModal();
 
@@ -557,9 +572,24 @@
         }
 
         // --- FIRESTORE UTILITY FUNCTIONS ---
+        
+        /**
+         * Creates a clean, serializable copy of the current state for history.
+         */
+        function createSerializableState(state) {
+            return {
+                fullySelectedNumbers: Array.from(state.fullySelectedNumbers),
+                keptNumbers: Array.from(state.keptNumbers),
+                prizeTierWinners: Array.from(state.prizeTierWinners),
+                lastPickedNumber: state.lastPickedNumber,
+                pickCount: state.pickCount,
+                ownerId: state.ownerId
+            };
+        }
+
 
         /**
-         * Safely saves the *full* game state to Firestore (used for creation/reset).
+         * Safely saves the *full* game state to Firestore (used for creation/reset/undo).
          */
         async function saveFullState(state, isCreation = false) {
             if (!db || !userId || !state) {
@@ -570,15 +600,16 @@
             const isOwnerMatch = state.ownerId === userId;
             const isLoggedInAdmin = auth.currentUser && !auth.currentUser.isAnonymous;
             
-            // Security Check
-            if (isCreation || !isLoggedInAdmin || !isOwnerMatch) {
-                if (!isLoggedInAdmin || !isOwnerMatch) {
+            // Security Check for full state save (creation/reset)
+            if (isCreation || elements.resetModal.classList.contains('hidden') === false) { 
+                 if (!isLoggedInAdmin || !isOwnerMatch) {
                     console.error("Creation/Full State Save Failed: Must be a logged-in admin user setting themselves as the owner.");
                     throw new Error("Creation Denied: Must be logged in as an admin to create/reset a board.");
                 }
             }
 
             elements.button.disabled = true;
+            elements.undoButton.disabled = true; // Disable undo during write
             elements.resetButton.disabled = true;
             try {
                 // Ensure Sets are converted back to Arrays for storage
@@ -586,8 +617,12 @@
                     ...state,
                     fullySelectedNumbers: Array.from(state.fullySelectedNumbers),
                     keptNumbers: Array.from(state.keptNumbers),
-                    prizeTierWinners: Array.from(state.prizeTierWinners), // NEW: Convert Set to Array
+                    prizeTierWinners: Array.from(state.prizeTierWinners), 
                 };
+                
+                // Do not save stateHistory to Firestore as it could exceed the document limit
+                delete stateToSave.stateHistory; 
+                
                 await setDoc(doc(db, GAME_DOC_PATH), stateToSave);
                 console.log(`Full game state saved successfully. (Creation: ${isCreation})`);
             } catch (error) {
@@ -605,6 +640,7 @@
                  throw new Error("Permission Denied.");
              }
              elements.button.disabled = true;
+             elements.undoButton.disabled = true; // Disable undo during write
              try {
                  // Use setDoc with { merge: true }
                  await setDoc(doc(db, GAME_DOC_PATH), updatePayload, { merge: true });
@@ -639,17 +675,22 @@
             elements.resetModal.classList.add('hidden');
             elements.messageBox.classList.add('hidden');
             
+            lastUndoneNumber = null; // Clear queue on full reset
+
             const initialState = {
                 fullySelectedNumbers: new Set(),
                 keptNumbers: new Set(),
-                prizeTierWinners: new Set(), // NEW: Initialize new Set
+                prizeTierWinners: new Set(), 
                 lastPickedNumber: null,
                 ownerId: userId, // Set the current LOGGED-IN user as the owner
-                pickCount: 0, // Reset pick count
+                pickCount: 0, 
+                stateHistory: [] // History is not saved to Firestore, but reset locally
             };
 
             try {
+                // The full state save is only for Firestore; localState.stateHistory remains local.
                 await saveFullState(initialState, isCreation); 
+                localState.stateHistory = []; // Ensure local history is cleared upon successful write
                 console.log('Game has been reset/created in Firestore.');
             } catch (error) {
                 console.error("Reset attempt failed:", error);
@@ -670,26 +711,48 @@
             if (!state || Object.keys(state).length === 0 || !state.ownerId) {
                 return; 
             }
-
-            // 1. Update Local State & Admin Status
-            localState = {
-                ...state,
-                fullySelectedNumbers: new Set(state.fullySelectedNumbers || []),
-                keptNumbers: new Set(state.keptNumbers || []),
-                prizeTierWinners: new Set(state.prizeTierWinners || []), // NEW: Initialize Set
-                pickCount: state.pickCount || 0, 
-                // Ensure lastPickedNumber is a number or null
-                lastPickedNumber: typeof state.lastPickedNumber === 'number' ? state.lastPickedNumber : null
-            };
             
+            // 1. Check if the incoming state is identical to the last one in history.
+            // This prevents saving duplicate states if the snapshot listener fires immediately after a write.
+            const incomingStateSerialized = JSON.stringify({ 
+                fullySelectedNumbers: state.fullySelectedNumbers, 
+                keptNumbers: state.keptNumbers, 
+                prizeTierWinners: state.prizeTierWinners,
+                lastPickedNumber: state.lastPickedNumber,
+                pickCount: state.pickCount 
+            });
+
+            const currentHistoryStateSerialized = localState.stateHistory.length > 0 
+                ? JSON.stringify(createSerializableState(localState.stateHistory[localState.stateHistory.length - 1]))
+                : null;
+            
+            // 2. Update Local State from Firestore
+            // We only update localState's game data here; stateHistory is managed separately.
+            localState.fullySelectedNumbers = new Set(state.fullySelectedNumbers || []);
+            localState.keptNumbers = new Set(state.keptNumbers || []);
+            localState.prizeTierWinners = new Set(state.prizeTierWinners || []); 
+            localState.pickCount = state.pickCount || 0;
+            localState.lastPickedNumber = typeof state.lastPickedNumber === 'number' ? state.lastPickedNumber : null;
+            localState.ownerId = state.ownerId;
+            
+            // 3. Save to History (if it's a new, committed state)
+            if (incomingStateSerialized !== currentHistoryStateSerialized) {
+                // Only push if the state is genuinely different from the last saved history state
+                localState.stateHistory.push(createSerializableState(localState));
+                console.log(`History updated. New length: ${localState.stateHistory.length}`);
+            }
+
+            // 4. Update Admin Status
             const user = auth.currentUser;
             isAdmin = (user && !user.isAnonymous) && (userId === localState.ownerId);
             
-            // 2. Update UI Controls based on Admin Status
+            // 5. Update UI Controls based on Admin Status
             elements.decisionModal.classList.add('hidden');
             
             elements.button.disabled = !isAdmin;
             elements.resetButton.disabled = !isAdmin;
+            // Undo requires at least 2 states: State N-1 (to restore) and State N (to pop)
+            elements.undoButton.disabled = !isAdmin || localState.stateHistory.length <= 1; 
 
             if (isAdmin) {
                 elements.ownerStatus.textContent = "You are the Game Owner (Admin)";
@@ -700,7 +763,7 @@
                 elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-yellow-100 text-yellow-700";
             }
             
-            // 3. Render Grid and Status
+            // 6. Render Grid and Status
             renderNumberGrid();
             
             const removedCount = localState.fullySelectedNumbers.size;
@@ -710,9 +773,22 @@
             // Update Pick Count Display
             elements.pickCountDisplay.textContent = `${localState.lastPickedNumber || '--'} / ${localState.pickCount}`;
             
+            // Highlight button if a number is queued for re-pick
+            if (lastUndoneNumber !== null) {
+                elements.button.textContent = `Re-pick Number ${lastUndoneNumber}`;
+                elements.button.classList.add('bg-blue-500', 'hover:bg-blue-600', 'text-white');
+                elements.button.classList.remove('bg-white', 'hover:bg-gray-200', 'text-black');
+            } else {
+                elements.button.textContent = 'Pick Next Number';
+                elements.button.classList.add('bg-white', 'hover:bg-gray-200', 'text-black');
+                elements.button.classList.remove('bg-blue-500', 'hover:bg-blue-600', 'text-white');
+            }
+
+
             if (remaining === 0) {
                 elements.messageBox.classList.remove('hidden');
                 elements.button.disabled = true;
+                elements.undoButton.disabled = true;
             } else {
                 elements.messageBox.classList.add('hidden');
             }
@@ -759,7 +835,7 @@
             }
         }
 
-        // --- USER ACTIONS (TRIGGER FIRESTORE WRITE) ---
+        // --- ADMIN ACTIONS (TRIGGER FIRESTORE WRITE) ---
 
         async function selectNumber() {
             if (!isAdmin) {
@@ -770,27 +846,42 @@
             
             elements.button.disabled = true; 
             
-            // Filter: ONLY include numbers NOT in fullySelectedNumbers (Red numbers excluded).
-            const availablePicks = Array.from({ length: MAX_NUMBER }, (_, i) => i + 1).filter(num => {
-                return !localState.fullySelectedNumbers.has(num);
-            });
+            let selected = null;
+            
+            // Check if a number is queued for re-pick
+            if (lastUndoneNumber !== null) {
+                selected = lastUndoneNumber;
+                lastUndoneNumber = null; // Clear the queue after use
+                console.log(`Re-picking queued number: ${selected}`);
+            } else {
+                // 1. Save current committed state (N-1) to history BEFORE the pick/change happens
+                // We only do this for *new* random picks, not re-picks after undo.
+                localState.stateHistory.push(createSerializableState(localState));
+                elements.undoButton.disabled = true; // Will be re-enabled on snapshot update
 
-            if (availablePicks.length === 0) {
-                elements.messageBox.classList.remove('hidden');
-                elements.button.disabled = true;
-                return;
+                // Filter: ONLY include numbers NOT in fullySelectedNumbers (Red numbers excluded).
+                const availablePicks = Array.from({ length: MAX_NUMBER }, (_, i) => i + 1).filter(num => {
+                    return !localState.fullySelectedNumbers.has(num);
+                });
+
+                if (availablePicks.length === 0) {
+                    elements.messageBox.classList.remove('hidden');
+                    elements.button.disabled = true;
+                    return;
+                }
+
+                const randomIndex = Math.floor(Math.random() * availablePicks.length);
+                selected = availablePicks[randomIndex];
             }
 
-            const randomIndex = Math.floor(Math.random() * availablePicks.length);
-            const selected = availablePicks[randomIndex];
-            
+
             flashNumber(selected);
 
-            // 1. Increment pick count for this action
+            // 2. Increment pick count for this action
             const newPickCount = localState.pickCount + 1;
             lastPickedNumber = selected; // Store for the modal/decision handler
             
-            // 2. Check for Milestone and update Prize Winners
+            // 3. Check for Milestone and update Prize Winners
             const isMilestonePick = newPickCount > 0 && newPickCount % MILESTONE_INTERVAL === 0;
             const newPrizeTierWinners = new Set(localState.prizeTierWinners); 
 
@@ -800,7 +891,7 @@
                 console.log(`Milestone reached! Number ${selected} is a permanent Blue Prize Tier Winner.`);
             }
 
-            // 3. Check for automatic removal (Yellow -> Red)
+            // 4. Check for automatic removal (Yellow -> Red)
             if (localState.keptNumbers.has(selected)) {
                 // RULE: Yellow numbers, when picked, automatically turn Red.
                 console.log(`Number ${selected} was Kept (Yellow), automatically removing it.`);
@@ -808,9 +899,11 @@
                 // If automatic removal, call handleDecision which saves the full state change including pickCount/Prize Winners
                 await handleDecision(selected, 'remove', newPickCount, newPrizeTierWinners); 
             } else {
-                // 4. The number is Available (Green/Blue). Require Admin decision.
+                // 5. The number is Available (Green/Blue). Require Admin decision.
                 
                 // Save the incremented pick count, last picked number, AND the updated prize winners list
+                // This state will trigger a snapshot update, but because it's not a *final* decision on the number's status, 
+                // it is still considered the current state (State N) awaiting decision.
                 await saveStateUpdate({
                     pickCount: newPickCount,
                     lastPickedNumber: selected,
@@ -855,13 +948,14 @@
 
             elements.button.disabled = true;
             
-            // Start with the current state's Sets
+            // Start with the current state's Sets (which were updated by the snapshot listener)
             const newFullySelected = new Set(localState.fullySelectedNumbers);
             const newKept = new Set(localState.keptNumbers);
             
             if (action === 'keep') {
                 // Green/Blue -> Yellow (Keep)
                 newKept.add(selected);
+                newFullySelected.delete(selected); // Should already be absent, but ensures cleanliness
             } else if (action === 'remove') {
                 // Yellow -> Red (Automatic) OR Green/Blue -> Red (Manual)
 
@@ -873,8 +967,6 @@
             }
             
             // Determine the pick count and prize winners to save. 
-            // If auto* are provided (Yellow-to-Red), use them.
-            // Otherwise, use the current pick count from state, as it was already updated in selectNumber
             const finalPickCount = autoPickCount !== null ? autoPickCount : localState.pickCount;
             const finalPrizeWinners = autoPrizeWinners !== null ? autoPrizeWinners : localState.prizeTierWinners;
 
@@ -897,6 +989,53 @@
             elements.decisionModal.classList.add('hidden');
         }
         
+        /**
+         * Reverts the game state to the state saved before the last pick cycle.
+         * This reverts the pick count and the status of the last picked number, AND queues it for re-pick.
+         */
+        async function undoLastAction() {
+            // Need at least 2 states: State N-1 (to restore) and State N (the current state to discard)
+            if (!isAdmin || localState.stateHistory.length <= 1) {
+                console.warn("Undo failed: Not admin or insufficient history available.");
+                elements.undoButton.disabled = true;
+                return;
+            }
+            
+            elements.undoButton.disabled = true; // Immediately disable to prevent double-click
+
+            // 1. Identify the number from the state being discarded (State N)
+            // localState.stateHistory.length >= 2, so the last element is the state to discard.
+            const stateToDiscard = localState.stateHistory[localState.stateHistory.length - 1];
+            
+            if (stateToDiscard && stateToDiscard.lastPickedNumber) {
+                lastUndoneNumber = stateToDiscard.lastPickedNumber; // Queue the number for re-pick
+                console.log(`Undo successful. Number ${lastUndoneNumber} queued for the next pick.`);
+            }
+            
+            // 2. Discard the current state (State N, the result of the last action)
+            localState.stateHistory.pop(); 
+            
+            // 3. Retrieve the previous state (State N-1, the state *before* the last pick)
+            const stateToRestore = localState.stateHistory[localState.stateHistory.length - 1]; 
+            
+            if (stateToRestore) {
+                console.log(`Undoing last pick. Reverting board to Pick Count ${stateToRestore.pickCount}.`);
+                
+                // 4. Overwrite the Firestore document with the previous state data
+                // This triggers a snapshot update for all users.
+                await saveFullState(stateToRestore);
+                
+                // The onSnapshot listener will handle re-enabling controls and redrawing the board.
+            } else {
+                // This shouldn't happen if the length check passed, but acts as a safeguard.
+                console.error("Error retrieving state from history during undo. Clearing local history.");
+                localState.stateHistory = [];
+                lastUndoneNumber = null; // Clear queue
+                elements.undoButton.disabled = true; 
+            }
+        }
+        window.undoLastAction = undoLastAction;
+
         // Add event listeners for the decision buttons
         if (elements.keepButton) {
             elements.keepButton.addEventListener('click', () => {
@@ -969,6 +1108,7 @@
                         elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-red-100 text-red-700";
                         elements.button.disabled = true;
                         elements.resetButton.disabled = true;
+                        elements.undoButton.disabled = true;
                     }
                 }
             }, (error) => {
@@ -991,6 +1131,9 @@
             // 2. Set up event listeners for main actions
             if (elements.button) {
                 elements.button.addEventListener('click', selectNumber);
+            }
+            if (elements.undoButton) {
+                elements.undoButton.addEventListener('click', undoLastAction);
             }
         };
 
