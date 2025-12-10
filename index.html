@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Draw-down Ticket Picker (Permanent Blue Numbers)</title>
+    <title>Secure Draw-down Ticket Picker (Custom Background)</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Configure Tailwind -->
@@ -19,6 +19,33 @@
         }
     </script>
     <style>
+        /* --- GLOBAL TEXT BOLDNESS AND FONT WEIGHT --- */
+        body, p, span, h1, h3, button, div {
+            font-weight: 700 !important;
+        }
+
+        /* --- BACKGROUND IMAGE AND OVERLAY --- */
+        /* The background image is set dynamically by JavaScript */
+        body {
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            position: relative;
+            min-height: 100vh;
+        }
+        
+        /* Dark Overlay for contrast and readability (60% OPACITY) */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6); /* 60% opaque dark overlay */
+            z-index: -1;
+        }
+
         /* Custom styles for the number grid */
         .number-grid {
             display: grid;
@@ -45,7 +72,6 @@
             padding: 4px;
             height: 30px;
             font-size: 0.75rem;
-            font-weight: 500;
             cursor: default;
             user-select: none;
             transition: all 0.2s ease;
@@ -63,11 +89,10 @@
         /* State 1: Fully Removed (Crossed out) - RED */
         .number-item.selected {
             text-decoration: line-through;
-            opacity: 0.4;
+            opacity: 0.5;
             background-color: #fca5a5;
             color: #b91c1c;
             transform: scale(0.95);
-            font-weight: 500;
             border: none;
             box-shadow: none;
         }
@@ -78,19 +103,16 @@
             color: #713f12;
             border: 3px solid #f59e0b;
             opacity: 1;
-            font-weight: 800;
             text-decoration: none;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
         /* State 3: Prize Tier (Permanent Highlight) - BLUE */
         .number-item.prize-tier {
-            /* !important ensures this overrides the base available/kept colors */
             background-color: #60a5fa !important; 
             color: #fff !important; 
             border: 3px solid #1d4ed8 !important;
             box-shadow: 0 4px 10px rgba(29, 78, 216, 0.5) !important;
-            font-weight: 900 !important;
             transform: scale(1.05) !important;
         }
         
@@ -123,28 +145,28 @@
         }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen p-4 md:p-8 font-sans">
+<body class="min-h-screen p-4 md:p-8 font-sans">
 
     <!-- Loading Overlay -->
     <div id="loading-overlay" class="app-overlay">
         <div class="animate-spin rounded-full h-12 w-12 border-4 border-t-red-500 border-gray-200"></div>
-        <p id="loading-status" class="mt-4 text-lg text-red-600 font-semibold">Initializing Firebase...</p>
+        <p id="loading-status" class="mt-4 text-lg text-red-600">Initializing Firebase...</p>
     </div>
     
     <!-- Initial Choice Modal -->
     <div id="initial-choice-modal" class="app-overlay hidden">
         <div class="bg-white p-8 rounded-xl shadow-2xl max-w-lg w-full text-center border border-gray-200">
-            <h3 class="text-3xl font-bold text-red-600 mb-4">Hartselle Baseball Drawdown</h3>
+            <h3 class="text-3xl text-red-600 mb-4">Hartselle Baseball Drawdown</h3>
             <p class="text-md text-gray-600 mb-8">Please select how you want to access the board.</p>
             
             <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 justify-center">
                 <button 
-                    class="px-8 py-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-xl shadow-md transition duration-200 active:scale-95 flex-1"
+                    class="px-8 py-4 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl shadow-md transition duration-200 active:scale-95 flex-1"
                     onclick="window.handleViewBoard()">
                     View Board (Read-Only)
                 </button>
                 <button 
-                    class="px-8 py-4 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-md transition duration-200 active:scale-95 flex-1"
+                    class="px-8 py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl shadow-md transition duration-200 active:scale-95 flex-1"
                     onclick="window.showAdminLoginModal()">
                     Admin Login (Edit Board)
                 </button>
@@ -157,7 +179,7 @@
     <div id="admin-auth-modal" class="app-overlay hidden">
         <div class="bg-white p-8 rounded-xl shadow-2xl max-w-lg w-full text-center border border-gray-200">
             <div class="p-4">
-                <h3 class="text-2xl font-bold text-red-600 mb-2">Admin Access Required</h3>
+                <h3 class="text-2xl text-red-600 mb-2">Admin Access Required</h3>
                 <p class="text-sm text-gray-500 mb-6">Log in to enable picking and board resets. (Example: admin@example.com / supersecret)</p>
                 
                 <input type="email" id="admin-email-input" placeholder="Admin Email" value="admin@example.example"
@@ -172,22 +194,22 @@
                             aria-label="Toggle password visibility">
                         <!-- Eye Icon (lucide-react 'eye-off' by default) -->
                         <svg id="password-toggle-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M9.88 9.88a3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.44-1.6"/><line x1="2" y1="2" x2="22" y2="22"/>
+                            <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.44-1.6"/><line x1="2" y1="2" x2="22" y2="22"/>
                         </svg>
                     </button>
                 </div>
                        
                 <!-- Error Messaging -->
-                <p id="auth-error" class="text-red-600 bg-red-100 border border-red-300 p-2 rounded-lg mb-4 hidden font-medium text-xs"></p>
+                <p id="auth-error" class="text-red-600 bg-red-100 border border-red-300 p-2 rounded-lg mb-4 hidden text-xs"></p>
                        
                 <button id="admin-login-button" 
-                        class="w-full px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-md transition duration-200 active:scale-95 disabled:opacity-50"
+                        class="w-full px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl shadow-md transition duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                         onclick="window.handleAdminLogin()">
                     Log In as Admin
                 </button>
                 
                 <button onclick="window.showInitialChoiceModal()" 
-                        class="mt-4 w-full px-6 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl shadow-md hover:bg-gray-300 transition duration-200 active:scale-95">
+                        class="mt-4 w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-xl shadow-md hover:bg-gray-300 transition duration-200 active:scale-95">
                     Cancel (Go Back)
                 </button>
             </div>
@@ -196,25 +218,24 @@
 
 
     <!-- Main Application Container -->
-    <div id="app-container" class="max-w-6xl mx-auto bg-white shadow-xl rounded-2xl overflow-hidden hidden">
+    <div id="app-container" class="max-w-6xl mx-auto bg-white/95 shadow-xl rounded-2xl overflow-hidden hidden">
         
         <!-- Header and Controls (Now Red) -->
         <header class="p-6 bg-red-700 text-white flex flex-col lg:flex-row justify-between items-start lg:items-center">
             
             <!-- Mascot and Title Area -->
             <div class="flex items-center space-x-4 mb-4 lg:mb-0">
-                <!-- Mascot Image (UPDATED SRC HERE) -->
-                <img src="https://tse4.mm.bing.net/th/id/OIP.4-TOVrK1ZJPDnE0gfoGe-AHaHa?pid=Api&P=0&h=220" 
-                     alt="Hartselle Baseball Mascot" 
+                <!-- **CUSTOMIZATION POINT 1: LOGO IMAGE URL** -->
+                <img src="https://pbs.twimg.com/profile_images/1817357831432970240/9IsuxquW_400x400.jpg" 
+                     alt="Team Logo" 
                      class="w-16 h-16 rounded-full border-4 border-yellow-300 shadow-lg object-cover"
                      onerror="this.onerror=null; this.src='https://placehold.co/60x60/fcd34d/374151?text=LOGO+FAIL'">
                 
-                <!-- Adjusted title size for prominence -->
                 <div>
-                    <h1 class="text-4xl font-extrabold lg:text-5xl"> 
+                    <h1 class="text-4xl lg:text-5xl"> 
                         Hartselle Baseball Drawdown
                     </h1>
-                    <p class="text-lg font-medium text-yellow-300">Board ID: <span id="current-game-id">DRAWDOWN-MAIN-BOARD</span></p>
+                    <p class="text-lg text-yellow-300">Board ID: <span id="current-game-id">DRAWDOWN-MAIN-BOARD</span></p>
                 </div>
             </div>
             
@@ -222,7 +243,7 @@
                 <!-- Pick Count Display -->
                 <div class="text-right">
                     <p class="text-sm opacity-80">Pick # / Total Clicks:</p>
-                    <p id="pick-count-display" class="text-4xl font-black text-yellow-300 transition-all duration-300">
+                    <p id="pick-count-display" class="text-4xl text-yellow-300 transition-all duration-300">
                         --
                     </p>
                 </div>
@@ -230,14 +251,14 @@
                 <!-- Control Buttons -->
                 <div class="flex flex-row space-x-3">
                     <button id="undo-button" 
-                            class="px-3 py-3 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-xl shadow-lg transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-red-900"
+                            class="px-3 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-xl shadow-lg transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-red-900"
                             title="Undo Last Pick Cycle (Reverts board state and Pick #). The next pick will be the same number.">
                         <!-- Undo Icon -->
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6.19 2.51L3 13"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6.19 2.51L3 13"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
                     </button>
 
                     <button id="select-button" 
-                            class="px-6 py-3 bg-white hover:bg-gray-200 text-black font-bold rounded-xl shadow-lg transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-red-900 flex-grow">
+                            class="px-6 py-3 bg-white hover:bg-gray-200 text-black rounded-xl shadow-lg transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-red-900 flex-grow">
                         Pick Next Number
                     </button>
                 </div>
@@ -245,34 +266,56 @@
         </header>
 
         <!-- Status and Pick Count -->
-        <div class="p-6 border-b border-gray-100 flex flex-col lg:flex-row justify-between items-start lg:items-center space-y-3 lg:space-y-0 text-sm">
+        <div class="p-6 border-b border-gray-100 flex flex-col lg:flex-row justify-between items-start lg:items-center text-sm space-y-3 lg:space-y-0">
             <div class="flex items-center space-x-4">
-                <p id="owner-status" class="font-semibold text-center py-1 px-3 rounded-full"></p>
-                <p class="text-gray-600">Available Numbers: <span id="available-count" class="font-bold text-red-600">500</span></p>
+                <p id="owner-status" class="text-center py-1 px-3 rounded-full"></p>
+                <p class="text-gray-600">Available Numbers: <span id="available-count" class="text-red-600">500</span></p>
             </div>
             
 
             <div class="flex items-center space-x-4">
                  <p id="user-info" class="text-xs text-gray-500">
-                    <span id="auth-state" class="font-bold text-gray-800">...</span> | 
-                    Your Auth ID: <span id="user-id-display" class="font-mono font-bold">...</span>
+                    <span id="auth-state" class="text-gray-800">...</span> | 
+                    Your Auth ID: <span id="user-id-display" class="font-mono">...</span>
                 </p>
-                <button id="admin-logout-button" class="text-gray-500 hover:text-red-500 font-medium transition duration-150 hidden" onclick="window.handleAdminLogout()">
+                <button id="admin-logout-button" class="text-gray-500 hover:text-red-500 transition duration-150 hidden" onclick="window.handleAdminLogout()">
                     (Log Out)
                 </button>
-                <button id="reset-button" class="text-red-500 hover:text-red-700 font-medium transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed" onclick="window.handleResetConfirmation()">
+                <button id="reset-button" class="text-red-500 hover:text-red-700 transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed" onclick="window.handleResetConfirmation()">
                     Reset Board
                 </button>
             </div>
         </div>
         
+        <!-- Background Control Panel (Admin Only) -->
+        <div id="background-control-panel" class="p-4 bg-gray-100/80 border-b border-gray-200 hidden">
+            <div class="flex justify-between items-center cursor-pointer" onclick="document.getElementById('background-config-area').classList.toggle('hidden');">
+                <h3 class="text-lg text-gray-700">Background Configuration (Admin Only)</h3>
+                <span class="text-red-500 text-xl font-bold">+</span>
+            </div>
+
+            <div id="background-config-area" class="hidden pt-4">
+                <label for="bg-url-input" class="block text-xs font-medium text-gray-600 mb-1">Paste Image URL (e.g., Unsplash link):</label>
+                <div class="flex space-x-2">
+                    <input type="url" id="bg-url-input" placeholder="https://images.unsplash.com/..."
+                           class="flex-grow p-2 border-2 border-gray-300 rounded-lg text-sm focus:ring-red-500 focus:border-red-500 transition" />
+                    <button onclick="window.saveBackgroundUrl()" 
+                            class="px-4 py-2 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-600 transition active:scale-95">
+                        Save & Apply
+                    </button>
+                </div>
+                <p id="current-bg-url" class="text-xs text-gray-500 mt-2 truncate">Current URL: ...</p>
+                <p class="text-xs text-red-500 mt-1">Note: Use high-contrast images for best text visibility.</p>
+            </div>
+        </div>
+
         <!-- Number Grid Container -->
         <main class="p-6">
             <div class="text-sm text-gray-500 mb-4">
-                <span class="font-bold text-green-700">Green:</span> Available, decision required. | 
-                <span class="font-bold text-yellow-700">Yellow:</span> Kept, picked again means permanent removal. | 
-                <span class="font-bold text-blue-700">Blue:</span> **$100 Prize Tier Winner!** (Permanent highlight, still in the running). | 
-                <span class="font-bold text-red-700">Red:</span> Permanently removed (cannot be picked again).
+                <span class="text-green-700">Green:</span> Available, decision required. | 
+                <span class="text-yellow-700">Yellow:</span> Kept, picked again means permanent removal. | 
+                <span class="text-blue-700">Blue:</span> **$100 Prize Tier Winner!** (Permanent highlight, still in the running). | 
+                <span class="text-red-700">Red:</span> Permanently removed (cannot be picked again).
             </div>
             <div id="number-table" class="number-grid bg-gray-100 p-2 rounded-lg border border-gray-200">
                 <!-- Numbers will be injected here by JavaScript -->
@@ -283,24 +326,24 @@
         <div id="message-box" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
             <div class="bg-white p-8 rounded-xl shadow-2xl max-w-sm text-center">
                 <svg class="w-12 h-12 text-green-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                <h3 class="text-2xl font-bold text-gray-800 mb-2">All Numbers Removed!</h3>
+                <h3 class="text-2xl text-gray-800 mb-2">All Numbers Removed!</h3>
                 <p class="text-gray-600 mb-6">The game is complete!</p>
-                <button onclick="document.getElementById('message-box').classList.add('hidden'); window.handleResetConfirmation();" class="px-4 py-2 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600">Start Over</button>
+                <button onclick="document.getElementById('message-box').classList.add('hidden'); window.handleResetConfirmation();" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">Start Over</button>
             </div>
         </div>
 
         <!-- Confirmation Modal for Reset -->
         <div id="reset-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
             <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm text-center">
-                <h3 class="text-xl font-bold text-red-600 mb-2">Confirm Board Reset</h3>
+                <h3 class="text-xl text-red-600 mb-2">Confirm Board Reset</h3>
                 <p class="text-gray-600 mb-6">Are you sure you want to reset this board for **everyone**? This action cannot be undone.</p>
                 <div class="flex justify-center space-x-4">
                     <button onclick="document.getElementById('reset-modal').classList.add('hidden')" 
-                            class="px-4 py-2 bg-gray-300 text-gray-800 font-medium rounded-lg hover:bg-gray-400 transition">
+                            class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition">
                         Cancel
                     </button>
                     <button onclick="window.resetGame()" 
-                            class="px-4 py-2 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition">
+                            class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">
                         Yes, Reset
                     </button>
                 </div>
@@ -311,15 +354,15 @@
         <!-- Decision Modal -->
         <div id="decision-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
             <div class="bg-white p-8 rounded-xl shadow-2xl max-w-md text-center">
-                <h3 class="text-2xl font-bold text-gray-800 mb-2">Decision Time!</h3>
-                <p class="text-gray-600 mb-6">The number <span id="decision-number" class="font-bold text-red-600 text-xl">--</span> has been picked. Do you want to **Keep** it (mark yellow) or **Remove** it (cross out)?</p>
+                <h3 class="text-2xl text-gray-800 mb-2">Decision Time!</h3>
+                <p class="text-gray-600 mb-6">The number <span id="decision-number" class="text-red-600 text-xl">--</span> has been picked. Do you want to **Keep** it (mark yellow) or **Remove** it (cross out)?</p>
                 <div class="flex justify-center space-x-4">
                     <button id="keep-button" 
-                            class="px-6 py-3 bg-yellow-500 text-gray-900 font-bold rounded-lg shadow-md hover:bg-yellow-400 transition active:scale-95">
+                            class="px-6 py-3 bg-yellow-500 text-gray-900 rounded-lg shadow-md hover:bg-yellow-400 transition active:scale-95">
                         Keep (Mark Yellow)
                     </button>
                     <button id="remove-button" 
-                            class="px-6 py-3 bg-red-500 text-white font-bold rounded-lg shadow-md hover:bg-red-600 transition active:scale-95">
+                            class="px-6 py-3 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-600 transition active:scale-95">
                         Remove (Cross Out)
                     </button>
                 </div>
@@ -350,12 +393,17 @@
         // FIXED BOARD ID FOR SINGLE BOARD MODE
         const GAME_ID = 'DRAWDOWN-MAIN-BOARD';
         const GAME_DOC_PATH = `artifacts/${appId}/public/data/games/${GAME_ID}`;
+        
+        // **CUSTOMIZATION POINT 2: DEFAULT BACKGROUND IMAGE URL**
+        // Change the URL inside the single quotes to your desired default background image.
+        // If you are an Admin, you can also change this in the Background Configuration panel.
+        const DEFAULT_BG_URL = 'https://www.al.com/resizer/v2/PO5MAJV3EVHZDPYXQ765HU3PC4.JPG?auth=8ed904c6b9ce59a2a5dfb9f298e04f01e9733e9c104531bcc1259ac7a3565db1&width=1280&smart=true&quality=90';
         // =========================================================================
 
         // Global Firebase variables
         let db, auth;
         let userId = null; // The authenticated user's UID or anonymous ID
-        let isAdmin = false; // True if non-anonymous user and ownerId match
+        let isAdmin = null; // True if non-anonymous user and ownerId match
         let unsubscribeFromSnapshot = null; 
 
         // --- GAME CONSTANTS & STATE ---
@@ -369,11 +417,12 @@
             lastPickedNumber: null,
             ownerId: null, // ID of the user who is the admin
             pickCount: 0, // Total times "Pick Next Number" has been clicked
+            backgroundUrl: DEFAULT_BG_URL, // NEW: Custom background image URL
             stateHistory: [], // Store a history of past states for the undo function
         };
         
         let lastPickedNumber = null; // Holds the number while modal is open
-        let lastUndoneNumber = null; // *** NEW: Holds the number to be re-picked after an undo ***
+        let lastUndoneNumber = null; // Holds the number to be re-picked after an undo
 
         // --- DOM Elements ---
         const elements = {
@@ -405,6 +454,12 @@
             adminPasswordInput: document.getElementById('admin-password-input'),
             authError: document.getElementById('auth-error'),
             passwordToggleIcon: document.getElementById('password-toggle-icon'),
+
+            // NEW Background Elements
+            body: document.body,
+            backgroundControlPanel: document.getElementById('background-control-panel'),
+            bgUrlInput: document.getElementById('bg-url-input'),
+            currentBgUrl: document.getElementById('current-bg-url'),
         };
         
         // --- INITIAL ACCESS GATE FUNCTIONS ---
@@ -467,7 +522,7 @@
             } else {
                 passwordInput.type = "password";
                 // Change icon to 'eye-off' (hidden)
-                icon.innerHTML = '<path d="M9.88 9.88a3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.44-1.6"/><line x1="2" y1="2" x2="22" y2="22"/>';
+                icon.innerHTML = '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.44-1.6"/><line x1="2" y1="2" x2="22" y2="22"/>';
             }
         }
         window.togglePasswordVisibility = togglePasswordVisibility;
@@ -541,7 +596,10 @@
                 lastUndoneNumber = null; // Clear queue on logout
                 elements.appContainer.classList.add('hidden');
                 elements.loadingOverlay.classList.add('hidden');
-                localState = { fullySelectedNumbers: new Set(), keptNumbers: new Set(), prizeTierWinners: new Set(), lastPickedNumber: null, ownerId: null, pickCount: 0, stateHistory: [] };
+                localState = { fullySelectedNumbers: new Set(), keptNumbers: new Set(), prizeTierWinners: new Set(), lastPickedNumber: null, ownerId: null, pickCount: 0, backgroundUrl: DEFAULT_BG_URL, stateHistory: [] };
+
+                // Re-apply default background
+                applyBackground(DEFAULT_BG_URL);
 
                 showInitialChoiceModal();
 
@@ -558,18 +616,54 @@
             if (user && !user.isAnonymous) {
                 elements.userIdDisplay.textContent = user.uid;
                 elements.authState.textContent = `Admin (${user.email || 'UID'})`;
-                elements.authState.className = 'font-bold text-green-700'; 
+                elements.authState.className = 'text-green-700'; 
                 elements.adminLogoutButton.classList.remove('hidden');
             } else if (user && user.isAnonymous) {
                 elements.userIdDisplay.textContent = user.uid;
                 elements.authState.textContent = 'Viewer (Anonymous)';
-                elements.authState.className = 'font-bold text-yellow-700';
+                elements.authState.className = 'text-yellow-700';
                 elements.adminLogoutButton.classList.add('hidden');
             } else {
                 elements.authState.textContent = 'Unauthenticated';
                 elements.adminLogoutButton.classList.add('hidden');
             }
         }
+
+        // --- BACKGROUND IMAGE MANAGEMENT ---
+
+        /**
+         * Applies the given URL as the background image for the body.
+         */
+        function applyBackground(url) {
+            // Apply background image URL to the body's style property
+            elements.body.style.backgroundImage = `url('${url}')`;
+            elements.currentBgUrl.textContent = `Current URL: ${url}`;
+            localState.backgroundUrl = url;
+        }
+
+        /**
+         * Saves the URL from the input field to Firestore.
+         */
+        async function saveBackgroundUrl() {
+            if (!isAdmin) return;
+
+            const newUrl = elements.bgUrlInput.value.trim();
+            if (newUrl === "" || newUrl === localState.backgroundUrl) {
+                console.log("No change in background URL or input is empty.");
+                return;
+            }
+
+            try {
+                await saveStateUpdate({ backgroundUrl: newUrl });
+                // applyBackground will be called via the onSnapshot listener after save.
+                console.log("Background URL saved to Firestore.");
+            } catch (error) {
+                console.error("Failed to save background URL:", error);
+                // Optional: show a temporary error message in the UI
+            }
+        }
+        window.saveBackgroundUrl = saveBackgroundUrl;
+
 
         // --- FIRESTORE UTILITY FUNCTIONS ---
         
@@ -583,7 +677,9 @@
                 prizeTierWinners: Array.from(state.prizeTierWinners),
                 lastPickedNumber: state.lastPickedNumber,
                 pickCount: state.pickCount,
-                ownerId: state.ownerId
+                ownerId: state.ownerId,
+                // Only save backgroundUrl if it's not the default (optional optimization)
+                backgroundUrl: state.backgroundUrl
             };
         }
 
@@ -641,6 +737,7 @@
              }
              elements.button.disabled = true;
              elements.undoButton.disabled = true; // Disable undo during write
+             elements.resetButton.disabled = true; // Also disable reset during update
              try {
                  // Use setDoc with { merge: true }
                  await setDoc(doc(db, GAME_DOC_PATH), updatePayload, { merge: true });
@@ -684,6 +781,7 @@
                 lastPickedNumber: null,
                 ownerId: userId, // Set the current LOGGED-IN user as the owner
                 pickCount: 0, 
+                backgroundUrl: DEFAULT_BG_URL, // Reset to default image
                 stateHistory: [] // History is not saved to Firestore, but reset locally
             };
 
@@ -691,6 +789,7 @@
                 // The full state save is only for Firestore; localState.stateHistory remains local.
                 await saveFullState(initialState, isCreation); 
                 localState.stateHistory = []; // Ensure local history is cleared upon successful write
+                elements.bgUrlInput.value = DEFAULT_BG_URL; // Update input field
                 console.log('Game has been reset/created in Firestore.');
             } catch (error) {
                 console.error("Reset attempt failed:", error);
@@ -699,7 +798,7 @@
                 const errorMessage = `Operation Failed! Check Firebase Security Rules. Error: ${error.message}`;
                 console.error(errorMessage);
                 elements.ownerStatus.textContent = "Error during Reset/Creation!";
-                elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-red-100 text-red-700";
+                elements.ownerStatus.className = "text-center py-1 px-3 rounded-full bg-red-100 text-red-700";
             }
         }
         window.resetGame = resetGame;
@@ -713,13 +812,13 @@
             }
             
             // 1. Check if the incoming state is identical to the last one in history.
-            // This prevents saving duplicate states if the snapshot listener fires immediately after a write.
             const incomingStateSerialized = JSON.stringify({ 
                 fullySelectedNumbers: state.fullySelectedNumbers, 
                 keptNumbers: state.keptNumbers, 
                 prizeTierWinners: state.prizeTierWinners,
                 lastPickedNumber: state.lastPickedNumber,
-                pickCount: state.pickCount 
+                pickCount: state.pickCount,
+                backgroundUrl: state.backgroundUrl // Include new field in check
             });
 
             const currentHistoryStateSerialized = localState.stateHistory.length > 0 
@@ -727,17 +826,16 @@
                 : null;
             
             // 2. Update Local State from Firestore
-            // We only update localState's game data here; stateHistory is managed separately.
             localState.fullySelectedNumbers = new Set(state.fullySelectedNumbers || []);
             localState.keptNumbers = new Set(state.keptNumbers || []);
             localState.prizeTierWinners = new Set(state.prizeTierWinners || []); 
             localState.pickCount = state.pickCount || 0;
             localState.lastPickedNumber = typeof state.lastPickedNumber === 'number' ? state.lastPickedNumber : null;
             localState.ownerId = state.ownerId;
-            
+            localState.backgroundUrl = state.backgroundUrl || DEFAULT_BG_URL; // NEW: Get custom background
+
             // 3. Save to History (if it's a new, committed state)
             if (incomingStateSerialized !== currentHistoryStateSerialized) {
-                // Only push if the state is genuinely different from the last saved history state
                 localState.stateHistory.push(createSerializableState(localState));
                 console.log(`History updated. New length: ${localState.stateHistory.length}`);
             }
@@ -751,19 +849,24 @@
             
             elements.button.disabled = !isAdmin;
             elements.resetButton.disabled = !isAdmin;
-            // Undo requires at least 2 states: State N-1 (to restore) and State N (to pop)
             elements.undoButton.disabled = !isAdmin || localState.stateHistory.length <= 1; 
 
             if (isAdmin) {
                 elements.ownerStatus.textContent = "You are the Game Owner (Admin)";
-                elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-green-100 text-green-700";
+                elements.ownerStatus.className = "text-center py-1 px-3 rounded-full bg-green-100 text-green-700";
+                elements.backgroundControlPanel.classList.remove('hidden'); // Show background panel for admin
             } else {
                 const ownerText = localState.ownerId ? `Owner ID: ${localState.ownerId.substring(0, 8)}...` : 'Unknown Owner';
                 elements.ownerStatus.textContent = `Viewer Mode. ${ownerText}`;
-                elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-yellow-100 text-yellow-700";
+                elements.ownerStatus.className = "text-center py-1 px-3 rounded-full bg-yellow-100 text-yellow-700";
+                elements.backgroundControlPanel.classList.add('hidden'); // Hide for viewer
             }
             
-            // 6. Render Grid and Status
+            // 6. NEW: Apply Background Image
+            applyBackground(localState.backgroundUrl);
+            elements.bgUrlInput.value = localState.backgroundUrl;
+
+            // 7. Render Grid and Status
             renderNumberGrid();
             
             const removedCount = localState.fullySelectedNumbers.size;
@@ -855,7 +958,6 @@
                 console.log(`Re-picking queued number: ${selected}`);
             } else {
                 // 1. Save current committed state (N-1) to history BEFORE the pick/change happens
-                // We only do this for *new* random picks, not re-picks after undo.
                 localState.stateHistory.push(createSerializableState(localState));
                 elements.undoButton.disabled = true; // Will be re-enabled on snapshot update
 
@@ -899,11 +1001,9 @@
                 // If automatic removal, call handleDecision which saves the full state change including pickCount/Prize Winners
                 await handleDecision(selected, 'remove', newPickCount, newPrizeTierWinners); 
             } else {
-                // 5. The number is Available (Green/Blue). Require Admin decision.
+                // 5. The number is Available (Green/Blue. Require Admin decision.
                 
                 // Save the incremented pick count, last picked number, AND the updated prize winners list
-                // This state will trigger a snapshot update, but because it's not a *final* decision on the number's status, 
-                // it is still considered the current state (State N) awaiting decision.
                 await saveStateUpdate({
                     pickCount: newPickCount,
                     lastPickedNumber: selected,
@@ -991,10 +1091,8 @@
         
         /**
          * Reverts the game state to the state saved before the last pick cycle.
-         * This reverts the pick count and the status of the last picked number, AND queues it for re-pick.
          */
         async function undoLastAction() {
-            // Need at least 2 states: State N-1 (to restore) and State N (the current state to discard)
             if (!isAdmin || localState.stateHistory.length <= 1) {
                 console.warn("Undo failed: Not admin or insufficient history available.");
                 elements.undoButton.disabled = true;
@@ -1004,7 +1102,6 @@
             elements.undoButton.disabled = true; // Immediately disable to prevent double-click
 
             // 1. Identify the number from the state being discarded (State N)
-            // localState.stateHistory.length >= 2, so the last element is the state to discard.
             const stateToDiscard = localState.stateHistory[localState.stateHistory.length - 1];
             
             if (stateToDiscard && stateToDiscard.lastPickedNumber) {
@@ -1022,12 +1119,10 @@
                 console.log(`Undoing last pick. Reverting board to Pick Count ${stateToRestore.pickCount}.`);
                 
                 // 4. Overwrite the Firestore document with the previous state data
-                // This triggers a snapshot update for all users.
                 await saveFullState(stateToRestore);
                 
                 // The onSnapshot listener will handle re-enabling controls and redrawing the board.
             } else {
-                // This shouldn't happen if the length check passed, but acts as a safeguard.
                 console.error("Error retrieving state from history during undo. Clearing local history.");
                 localState.stateHistory = [];
                 lastUndoneNumber = null; // Clear queue
@@ -1059,13 +1154,17 @@
                 setLogLevel('debug'); 
                 
                 elements.loadingOverlay.classList.add('hidden');
+                
+                // Apply default background immediately while waiting for auth/data
+                applyBackground(DEFAULT_BG_URL);
+
                 showInitialChoiceModal();
 
             } catch (error) {
                 console.error("Firebase Initialization Error:", error);
                 elements.loadingOverlay.innerHTML = `
-                    <div class="text-center p-6 bg-red-100 rounded-xl shadow-lg border border-red-300">
-                        <p class="text-xl text-red-700 font-bold mb-3">Initialization Failed</p>
+                    <div class="text-center p-6 bg-red-100 rounded-xl shadow-lg border-4 border-red-500 max-w-lg">
+                        <p class="text-xl text-red-700">Initialization Failed</p>
                         <p class="text-base text-red-600 mb-4">The application failed to initialize Firebase.</p>
                         <p class="text-xs mt-3 text-gray-500">Error: ${error.message}</p>
                     </div>
@@ -1098,14 +1197,13 @@
                         } catch (e) {
                              console.error("Initial Game Creation Failed:", e.message);
                              const errorMessage = `Board Not Found: Failed to create the initial board document. Ensure the user is an authenticated admin. Error: ${e.message}`;
-                             console.error(errorMessage);
                              elements.ownerStatus.textContent = "Error: Failed to create board!";
-                             elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-red-100 text-red-700";
+                             elements.ownerStatus.className = "text-center py-1 px-3 rounded-full bg-red-100 text-red-700";
                         }
                     } else {
                         console.warn("Board does not exist. Viewer cannot create it. Waiting for Admin.");
                         elements.ownerStatus.textContent = "Board Empty/Uninitialized. Waiting for Admin...";
-                        elements.ownerStatus.className = "font-semibold text-center py-1 px-3 rounded-full bg-red-100 text-red-700";
+                        elements.ownerStatus.className = "text-center py-1 px-3 rounded-full bg-red-100 text-red-700";
                         elements.button.disabled = true;
                         elements.resetButton.disabled = true;
                         elements.undoButton.disabled = true;
@@ -1115,7 +1213,7 @@
                 console.error("Firestore real-time listener failed:", error);
                 elements.loadingOverlay.innerHTML = `
                     <div class="text-center p-6 bg-red-100 rounded-xl shadow-lg border-4 border-red-500 max-w-lg">
-                        <p class="text-xl text-red-700 font-bold mb-3">CONNECTION ERROR</p>
+                        <p class="text-xl text-red-700">CONNECTION ERROR</p>
                         <p class="text-base text-red-600 mb-4">Could not read from board ID: ${GAME_ID}. Check network connection and security rules. (Error: ${error.code})</p>
                     </div>
                 `;
