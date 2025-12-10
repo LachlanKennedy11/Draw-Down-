@@ -481,6 +481,7 @@
          * Signs in anonymously and starts the main application flow as a viewer.
          */
         async function handleViewBoard() {
+            applyBackground(DEFAULT_BG_URL);
             elements.initialChoiceModal.classList.add('hidden');
             elements.loadingStatus.textContent = "Connecting as Viewer...";
             elements.loadingOverlay.classList.remove('hidden');
@@ -544,7 +545,7 @@
                 elements.adminLoginButton.disabled = false;
                 return;
             }
-
+            applyBackground(DEFAULT_BG_URL);
             elements.adminAuthModal.classList.add('hidden'); // Hide modal immediately
             elements.loadingStatus.textContent = "Logging in as Admin...";
             elements.loadingOverlay.classList.remove('hidden');
